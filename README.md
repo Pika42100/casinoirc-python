@@ -50,4 +50,6 @@ ajout du juste prix ✅
 
 ajout du mini quiz ✅
 
-prochain ajout supprimer un compte EN DEVLOPPEMENT❌
+prochain ajout supprimer un compte ✅
+
+ajoute le faite que l'on sois oblige de tappez la commande !register pour jouer (sauf la commande !aide ✅
