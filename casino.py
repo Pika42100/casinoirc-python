@@ -584,21 +584,3 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
     def record_transaction(self, nickname, amount, transaction_type):
         self.cursor.execute("INSERT INTO transactions (nick, amount, type) VALUES (%s, %s, %s)", (nickname, amount, transaction_type))
         self.db.commit()
-        
-    def create_account(self, nickname):
-        if nickname not in self.accounts:
-            self.accounts[nickname] = 100  # Créer un nouveau compte avec 100 crédits
-            return True
-        else:
-            return False  # Le compte existe déjà
-
-    def delete_account(self, connection, target, nickname):
-        if not self.check_account(connection, target, nickname):
-            return
-        self.cursor.execute("DELETE FROM accounts WHERE nick = %s", (nickname,))
-        self.db.commit()
-        connection.privmsg(target, f"Le compte de {nickname} a été supprimé avec succès.")
-        
-if __name__ == "__main__":
-    bot = CasinoBot()
-    bot.start()
