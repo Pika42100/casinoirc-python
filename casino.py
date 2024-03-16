@@ -4,6 +4,7 @@ from irc.client import ip_numstr_to_quad, ip_quad_to_numstr
 import pymysql
 import random
 import datetime
+import datetime
 
 class CasinoBot(irc.bot.SingleServerIRCBot):
     def __init__(self):
@@ -23,7 +24,34 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         port = 6667
         nickname = "CasinoBot"
         irc.bot.SingleServerIRCBot.__init__(self, [(server, port)], nickname, nickname)
+        
+        self.quiz_questions = {
+            "Quelle est la capitale de la France ?": "Paris",
+            "Combien de continents y a-t-il sur Terre ?": "7",
+            "Qui a peint la Joconde ?": "Leonardo da Vinci"
+        }
+        self.wrong_answers = {}
+        self.correct_answer = None
 
+    def play_quiz(self, connection, target, nickname):
+        question = random.choice(list(self.quiz_questions.keys()))
+        self.correct_answer = self.quiz_questions[question]
+        self.send_message(connection, target, f"{nickname}, {question}")
+        
+        # Variables du jeu du Juste Prix
+        self.juste_prix_running = False
+        self.juste_prix_item = None
+        self.juste_prix_price = None
+        
+        # Articles pour le jeu du Juste Prix
+        self.articles = {
+            "iPhone": (100, 1000),
+            "TV": (200, 1500),
+            "Console de jeu": (150, 1200),
+            "Ordinateur portable": (300, 2000),
+            "Montre intelligente": (80, 800)
+        }
+        
     def on_welcome(self, connection, event):
         connection.join("#extra-cool")
 
@@ -66,6 +94,12 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         if message.startswith("!register"):
             nickname = event.source.nick
             self.register_user(connection, event.target, nickname)
+        nickname = event.source.nick  # Obtenir le pseudo de l'utilisateur
+        
+        nickname = event.source.nick
+        if message.startswith("!delete_account"):
+            self.delete_account(connection, event.target, nickname)
+        
          # Gérer les autres commandes existantes...
         message = event.arguments[0]
         if message.startswith("!bar"):
@@ -78,6 +112,15 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
                 nickname = event.source.nick
                 drink = args[1].lower()
                 self.buy_drink(connection, event.target, nickname, drink)
+        elif message.startswith("!gift"):
+            args = message.split()
+            if len(args) != 3:
+                connection.privmsg(event.target, "Usage: !gift <destinataire> <boisson>")
+            else:
+                sender = event.source.nick
+                recipient = args[1]
+                drink = args[2].lower()
+                self.gift_drink(connection, event.target, sender, recipient, drink)
         elif message.startswith("!casino"):
             nickname = event.source.nick
             self.play_casino(connection, event.target, nickname, message)
@@ -117,9 +160,69 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         elif message.startswith("!credit"):
             nickname = event.source.nick
             self.request_credit(connection, event.target, nickname)
+        if message.startswith("!juste_prix") and not self.juste_prix_running:
+            self.start_juste_prix(connection, event.target)
+        elif message.startswith("!bid") and self.juste_prix_running:
+            self.place_bid(connection, event.target, event.source.nick, message)
         elif message.startswith("!devine"):
             nickname = event.source.nick
             self.play_guess_the_number(connection, event.target, nickname, message)
+            message = event.arguments[0]
+            
+            message = event.arguments[0]
+        nickname = event.source.nick  # Get user nickname from the event
+        if message.startswith("!quiz"):
+            self.play_quiz(connection, event.target, nickname)
+        elif message.startswith("!rep"):
+            if self.correct_answer is None:
+                self.send_message(connection, event.target, "Aucune question n'est en cours.")
+                return
+            answer = message.split("!rep ", 1)[1]
+            if answer.lower() == self.correct_answer.lower():
+                self.send_message(connection, event.target, f"Bonne réponse, {nickname} ! Vous gagnez 10 crédits.")
+                # Add 10 credits to the player
+            else:
+                if nickname in self.wrong_answers:
+                    self.wrong_answers[nickname] += 1
+                else:
+                    self.wrong_answers[nickname] = 1
+                if self.wrong_answers[nickname] >= 3:
+                    self.send_message(connection, event.target, f"{nickname}, vous avez répondu incorrectement 3 fois. Vous perdez 10 crédits.")
+                    # Remove 10 credits from the player
+                else:
+                    self.send_message(connection, event.target, f"Dommage, {nickname} ! Essayez à nouveau.")
+
+    def send_message(self, connection, target, message):
+        connection.privmsg(target, message)
+            
+    def gift_drink(self, connection, target, sender, recipient, drink):
+        if drink not in self.drinks:
+            connection.privmsg(target, f"{drink.capitalize()} n'est pas disponible au bar.")
+            return
+
+        price = self.drinks[drink]
+        self.cursor.execute("SELECT balance FROM accounts WHERE nick = %s", (sender,))
+        sender_account = self.cursor.fetchone()
+        if sender_account is None:
+            connection.privmsg(target, f"Vous devez d'abord vous inscrire avec !register, {sender}!")
+            return
+
+        self.cursor.execute("SELECT balance FROM accounts WHERE nick = %s", (recipient,))
+        recipient_account = self.cursor.fetchone()
+        if recipient_account is None:
+            connection.privmsg(target, f"Le destinataire {recipient} n'existe pas.")
+            return
+
+        if sender_account['balance'] < price:
+            connection.privmsg(target, f"Vous n'avez pas assez de crédits pour acheter {drink.capitalize()}.")
+            return
+
+        self.cursor.execute("UPDATE accounts SET balance = balance - %s WHERE nick = %s", (price, sender))
+        self.cursor.execute("UPDATE accounts SET balance = balance + %s WHERE nick = %s", (price, recipient))
+        self.record_transaction(sender, price, f"achat_boisson_pour_{recipient}")
+        self.record_transaction(recipient, price, f"reception_boisson_de_{sender}")
+        self.db.commit()
+        connection.privmsg(target, f"{sender} a acheté {drink.capitalize()} pour {recipient}.")
 
     def register_user(self, connection, target, nickname):
         self.cursor.execute("SELECT * FROM accounts WHERE nick = %s", (nickname,))
@@ -173,6 +276,9 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         connection.privmsg(nickname, "!balance - Vérifier votre solde")
         connection.privmsg(nickname, "!transfer <destinataire> <montant> - Transférer des crédits à un autre joueur")
         connection.privmsg(nickname, "!profile - Voir votre profil")
+        connection.privmsg(nickname, "!depot <montant> - Déposer de l'argent dans votre compte en banque")
+        connection.privmsg(nickname, "!credit - Demander un crédit bancaire 1 par jour")
+        connection.privmsg(nickname, "!delete_account - Supprimer votre compte(1fois par semaine)")
         connection.privmsg(nickname, "!top10 - Afficher les 10 meilleurs joueurs")
         connection.privmsg(nickname, "!aide - Afficher cet message d'aide")
         connection.privmsg(nickname, "!quit - Quitter le casino")
@@ -180,11 +286,9 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         connection.privmsg(nickname, "!roulette <mise> - Jouer à la roulette")
         connection.privmsg(nickname, "!dice <mise> - Jouer au jeu de dés")
         connection.privmsg(nickname, "!slots <mise> - Jouer à la machine à sous")
-        connection.privmsg(nickname, "!transfer <destinataire> <montant>")
-        connection.privmsg(nickname, "!bar afiche les boisson disponible/!buy <montant> achète la boisson)"
-        connection.privmsg(nickname, "!depot <montant> - Déposer de l'argent dans votre compte en banque ########PAS ENCORS FONCTIONEL########")
-        connection.privmsg(nickname, "!credit - Demander un crédit bancaire 1 par jour")
-        connection.privmsg(nickname, "!delete_account - Supprimer votre compte(1fois par semaine)#######PAS ENCORS FONCTIONEL####### ")
+        connection.privmsg(nickname, "!bar - afiche les boisson disponible/!buy <montant> achète la boisson)")
+        connection.privmsg(nickname, "!quiz - joue au quiz")
+        connection.privmsg(nickname, "!juste_prix - lance le jeux du juste prix")
 
     def quit_bot(self, connection, nickname):
         connection.privmsg(nickname, "À bientôt!")
@@ -398,44 +502,63 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
 
         connection.privmsg(target, f"{nickname}, vous avez reçu un crédit de 100 crédits.")
         
-    def delete_account(self, connection, target, nickname):
-        self.cursor.execute("SELECT last_deleted FROM accounts WHERE nick = %s", (nickname,))
-        last_deleted = self.cursor.fetchone()
-        if last_deleted and (datetime.datetime.now() - last_deleted['last_deleted']).days < 7:
-            connection.privmsg(target, "Vous ne pouvez supprimer votre compte qu'une fois par semaine.")
+    def start_juste_prix(self, connection, target):
+        self.juste_prix_item, (min_price, max_price) = random.choice(list(self.articles.items()))
+        self.juste_prix_price = random.randint(min_price, max_price)
+        self.juste_prix_running = True
+        connection.privmsg(target, f"Un nouvel article est en jeu: {self.juste_prix_item}. Faites !bid <votre offre> pour participer!")
+
+    def place_bid(self, connection, target, nickname, message):
+        bid = message.split()[1]
+        try:
+            bid = int(bid)
+        except ValueError:
+            connection.privmsg(target, "Votre offre doit être un nombre entier.")
             return
-        self.cursor.execute("DELETE FROM accounts WHERE nick = %s", (nickname,))
-        self.db.commit()
-        connection.privmsg(target, f"Votre compte a été supprimé avec succès, {nickname}!")
-        self.cursor.execute("INSERT INTO accounts (nick, balance, bank_balance, last_deleted) VALUES (%s, %s, %s, %s)", (nickname, 0, 0, datetime.datetime.now()))
+        if bid <= 0:
+            connection.privmsg(target, "Votre offre doit être supérieure à zéro.")
+            return
+        if bid > self.juste_prix_price:
+            connection.privmsg(target, f"Félicitations, {nickname}! Vous avez gagné l'article {self.juste_prix_item} avec une offre de {bid} crédits.")
+            self.cursor.execute("UPDATE accounts SET balance = balance - %s, errors = 0 WHERE nick = %s", (bid, nickname))
+            self.cursor.execute("INSERT INTO transactions (nick, amount, type) VALUES (%s, %s, %s)", (nickname, bid, "juste_prix"))
+            self.db.commit()
+            self.reset_juste_prix()
+        else:
+            self.cursor.execute("UPDATE accounts SET errors = errors + 1 WHERE nick = %s", (nickname,))
+            self.db.commit()
+            if self.check_errors(nickname):
+                connection.privmsg(target, f"Désolé, {nickname}. Votre offre est trop basse. Essayez à nouveau!")
+                self.cursor.execute("UPDATE accounts SET balance = balance - %s WHERE nick = %s", (10, nickname))  # Perte de 10 crédits en cas d'erreur
+                self.db.commit()
+                self.reset_juste_prix()
+
+    def check_errors(self, nickname):
+        self.cursor.execute("SELECT errors FROM accounts WHERE nick = %s", (nickname,))
+        errors = self.cursor.fetchone()['errors']
+        return errors >= 3
+
+    def reset_juste_prix(self):
+        self.juste_prix_running = False
+        self.juste_prix_item = None
+        self.juste_prix_price = None
+
+    def record_transaction(self, nickname, amount, transaction_type):
+        self.cursor.execute("INSERT INTO transactions (nick, amount, type) VALUES (%s, %s, %s)", (nickname, amount, transaction_type))
         self.db.commit()
         
-    def deposit(self, connection, target, nickname, amount):
-        try:
-            amount = int(amount)
-        except ValueError:
-            connection.privmsg(target, "Le montant doit être un nombre entier.")
-            return
+    def create_account(self, nickname):
+        if nickname not in self.accounts:
+            self.accounts[nickname] = 100  # Créer un nouveau compte avec 100 crédits
+            return True
+        else:
+            return False  # Le compte existe déjà
 
-        if amount <= 0:
-            connection.privmsg(target, "Le montant doit être supérieur à zéro.")
-            return
-
-        self.cursor.execute("SELECT balance FROM accounts WHERE nick = %s", (nickname,))
-        account = self.cursor.fetchone()
-        if account is None:
-            connection.privmsg(target, f"Vous devez d'abord vous inscrire avec !register, {nickname}!")
-            return
-
-        if account['balance'] < amount:
-            connection.privmsg(target, f"Vous n'avez pas assez de crédits pour déposer {amount} crédits.")
-            return
-
-        self.cursor.execute("UPDATE accounts SET balance = balance - %s WHERE nick = %s", (amount, nickname))
-        self.cursor.execute("UPDATE accounts SET bank_balance = bank_balance + %s WHERE nick = %s", (amount, nickname))
+    def delete_account(self, connection, target, nickname):
+        self.cursor.execute("DELETE FROM accounts WHERE nick = %s", (nickname,))
         self.db.commit()
-        connection.privmsg(target, f"{nickname}, {amount} crédits ont été ajoutés à votre compte en banque.")
-
+        connection.privmsg(target, f"Le compte de {nickname} a été supprimé avec succès.")
+        
 if __name__ == "__main__":
     bot = CasinoBot()
     bot.start()
