@@ -32,8 +32,20 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         }
         self.wrong_answers = {}
         self.correct_answer = None
+        
+        self.juste_prix_running = False
+        
+    def check_account(self, connection, target, nickname):
+        self.cursor.execute("SELECT * FROM accounts WHERE nick = %s", (nickname,))
+        account = self.cursor.fetchone()
+        if account is None:
+            connection.privmsg(target, f"Vous devez d'abord vous inscrire avec !register, {nickname}!")
+            return False
+        return True
 
     def play_quiz(self, connection, target, nickname):
+        if not self.check_account(connection, target, nickname):
+            return
         question = random.choice(list(self.quiz_questions.keys()))
         self.correct_answer = self.quiz_questions[question]
         self.send_message(connection, target, f"{nickname}, {question}")
@@ -64,11 +76,15 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
 
     # Fonction pour afficher la liste des boissons disponibles au bar
     def show_drinks(self, connection, target):
+        if not self.check_account(connection, target, nickname):
+            return
         drinks_list = ", ".join([f"{drink.capitalize()} ({price} crédits)" for drink, price in self.drinks.items()])
         connection.privmsg(target, f"Boissons disponibles au bar : {drinks_list}")
 
     # Fonction pour permettre aux utilisateurs d'acheter des boissons
     def buy_drink(self, connection, target, nickname, drink):
+        if not self.check_account(connection, target, nickname):
+            return
         if drink not in self.drinks:
             connection.privmsg(target, f"{drink.capitalize()} n'est pas disponible au bar.")
             return
@@ -160,8 +176,10 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         elif message.startswith("!credit"):
             nickname = event.source.nick
             self.request_credit(connection, event.target, nickname)
+            message = event.arguments[0]
+            nickname = event.source.nick
         if message.startswith("!juste_prix") and not self.juste_prix_running:
-            self.start_juste_prix(connection, event.target)
+            self.start_juste_prix(connection, event.target, nickname)  # Passer le paramètre nickname
         elif message.startswith("!bid") and self.juste_prix_running:
             self.place_bid(connection, event.target, event.source.nick, message)
         elif message.startswith("!devine"):
@@ -196,6 +214,8 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         connection.privmsg(target, message)
             
     def gift_drink(self, connection, target, sender, recipient, drink):
+        if not self.check_account(connection, target, nickname):
+            return
         if drink not in self.drinks:
             connection.privmsg(target, f"{drink.capitalize()} n'est pas disponible au bar.")
             return
@@ -234,6 +254,8 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
             connection.privmsg(target, f"Vous êtes déjà enregistré, {nickname}!")
 
     def play_casino(self, connection, target, nickname, message):
+        if not self.check_account(connection, target, nickname):
+            return
         args = message.split()
         if len(args) != 2:
             connection.privmsg(target, "Usage: !casino <mise>")
@@ -305,6 +327,8 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
             connection.privmsg(target, "Aucun joueur trouvé.")
 
     def transfer_credits(self, connection, target, sender, recipient, amount):
+        if not self.check_account(connection, target, nickname):
+            return
         try:
             amount = int(amount)
         except ValueError:
@@ -339,6 +363,8 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         connection.privmsg(target, f"{sender} a transféré {amount} crédits à {recipient}.")
 
     def show_profile(self, connection, target, nickname):
+        if not self.check_account(connection, target, nickname):
+            return
         self.cursor.execute("SELECT * FROM accounts WHERE nick = %s", (nickname,))
         account = self.cursor.fetchone()
         if account is not None:
@@ -366,6 +392,8 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         self.db.commit()
 
     def flip_coin(self, connection, target, nickname):
+        if not self.check_account(connection, target, nickname):
+            return
         outcomes = ['pile', 'face']
         result = random.choice(outcomes)
         if result == "pile":
@@ -379,6 +407,8 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         self.db.commit()
 
     def play_roulette(self, connection, target, nickname, message):
+        if not self.check_account(connection, target, nickname):
+            return
         if len(message.split()) != 2:
             connection.privmsg(target, "Usage: !roulette <mise>")
             return
@@ -407,6 +437,8 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
             self.db.commit()
 
     def play_dice(self, connection, target, nickname, message):
+        if not self.check_account(connection, target, nickname):
+            return
         if len(message.split()) != 2:
             connection.privmsg(target, "Usage: !dice <mise>")
             return
@@ -434,6 +466,8 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
             self.db.commit()
 
     def play_slots(self, connection, target, nickname, message):
+        if not self.check_account(connection, target, nickname):
+            return
         if len(message.split()) != 2:
             connection.privmsg(target, "Usage: !slots <mise>")
             return
@@ -464,6 +498,8 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
             self.db.commit()
             
     def play_guess_the_number(self, connection, target, nickname, message):
+        if not self.check_account(connection, target, nickname):
+            return
         if len(message.split()) != 2:
             connection.privmsg(target, "Usage: !devine <nombre>")
             return
@@ -502,7 +538,9 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
 
         connection.privmsg(target, f"{nickname}, vous avez reçu un crédit de 100 crédits.")
         
-    def start_juste_prix(self, connection, target):
+    def start_juste_prix(self, connection, target, nickname):
+        if not self.check_account(connection, target, nickname):
+            return
         self.juste_prix_item, (min_price, max_price) = random.choice(list(self.articles.items()))
         self.juste_prix_price = random.randint(min_price, max_price)
         self.juste_prix_running = True
@@ -555,6 +593,8 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
             return False  # Le compte existe déjà
 
     def delete_account(self, connection, target, nickname):
+        if not self.check_account(connection, target, nickname):
+            return
         self.cursor.execute("DELETE FROM accounts WHERE nick = %s", (nickname,))
         self.db.commit()
         connection.privmsg(target, f"Le compte de {nickname} a été supprimé avec succès.")
