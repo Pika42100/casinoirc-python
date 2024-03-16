@@ -32,9 +32,22 @@ Commandes disponibles:
 
 !quit - Quitter le casino (fait quitter le bot)
 
+!bar - afiche les boisson disponible/!buy <montant> achète la boisson)
 
-ajout du jeux roulette du pil ou face et du jeux de dés ✅  ;)
+!juste_prix - lance le jeux du juste prix
+
+ajout du jeux roulette ✅ 
 
 ajout des machine a sous ✅
 
-prochain ajout supprimer un compte ❌
+pil ou face ✅
+
+jeux de dés✅
+
+ajout du mini bar ✅
+
+ajout du juste prix ✅
+
+ajout du mini quiz ✅
+
+prochain ajout supprimer un compte EN DEVLOPPEMENT❌
