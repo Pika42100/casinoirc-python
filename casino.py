@@ -18,7 +18,7 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         self.cursor.execute("CREATE TABLE IF NOT EXISTS accounts (nick VARCHAR(255), balance INT, last_credit_request DATE)")
         self.cursor.execute("CREATE TABLE IF NOT EXISTS transactions (id INT AUTO_INCREMENT PRIMARY KEY, nick VARCHAR(255), amount INT, type VARCHAR(10), timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         self.db.commit()
-
+        
         # Configuration du bot IRC
         server = "irc.extra-cool.fr"
         port = 6667
@@ -33,7 +33,19 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         self.wrong_answers = {}
         self.correct_answer = None
         
+        # Articles pour le jeu du Juste Prix
+        self.articles = {
+            "iPhone": (100, 1000),
+            "TV": (200, 1500),
+            "Console de jeu": (150, 1200),
+            "Ordinateur portable": (300, 2000),
+            "Montre intelligente": (80, 800)
+        }
         self.juste_prix_running = False
+        self.duck_hunt_running = False
+        self.local_jackpot = 0  # Initialiser le jackpot local à zéro
+        self.global_jackpot = 0  # Initialiser le jackpot global à zéro
+
         
     def check_account(self, connection, target, nickname):
         self.cursor.execute("SELECT * FROM accounts WHERE nick = %s", (nickname,))
@@ -49,20 +61,6 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         question = random.choice(list(self.quiz_questions.keys()))
         self.correct_answer = self.quiz_questions[question]
         self.send_message(connection, target, f"{nickname}, {question}")
-        
-        # Variables du jeu du Juste Prix
-        self.juste_prix_running = False
-        self.juste_prix_item = None
-        self.juste_prix_price = None
-        
-        # Articles pour le jeu du Juste Prix
-        self.articles = {
-            "iPhone": (100, 1000),
-            "TV": (200, 1500),
-            "Console de jeu": (150, 1200),
-            "Ordinateur portable": (300, 2000),
-            "Montre intelligente": (80, 800)
-        }
         
     def on_welcome(self, connection, event):
         connection.join("#extra-cool")
@@ -115,6 +113,13 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         nickname = event.source.nick
         if message.startswith("!delete_account"):
             self.delete_account(connection, event.target, nickname)
+            
+        message = event.arguments[0]
+        nickname = event.source.nick
+        if message.startswith("!duck_hunt") and not self.duck_hunt_running:
+            self.start_duck_hunt(connection, event.target, nickname)
+        elif message.startswith("!shoot") and self.duck_hunt_running:
+            self.shoot_duck(connection, event.target, nickname, message)
         
          # Gérer les autres commandes existantes...
         message = event.arguments[0]
@@ -253,6 +258,7 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         else:
             connection.privmsg(target, f"Vous êtes déjà enregistré, {nickname}!")
 
+
     def play_casino(self, connection, target, nickname, message):
         if not self.check_account(connection, target, nickname):
             return
@@ -274,14 +280,68 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         else:
             outcome = random.choice(["win", "lose"])
             if outcome == "win":
+                local_jackpot = self.generate_local_jackpot()  # Générer le jackpot local
+                global_jackpot = self.generate_global_jackpot()  # Générer le jackpot global
+                bet += local_jackpot + global_jackpot  # Ajouter les jackpots aux gains du joueur
+                self.local_jackpot += local_jackpot  # Mettre à jour le jackpot local
+                self.global_jackpot += global_jackpot  # Mettre à jour le jackpot global
                 self.cursor.execute("UPDATE accounts SET balance = balance + %s WHERE nick = %s", (bet, nickname))
                 self.record_transaction(nickname, bet, "win")
-                connection.privmsg(target, f"Félicitations! Vous avez gagné {bet} crédits.")
+                connection.privmsg(target, f"Félicitations! Vous avez gagné {bet} crédits. Jackpot local: {local_jackpot}. Jackpot global: {global_jackpot}")
             else:
                 self.cursor.execute("UPDATE accounts SET balance = balance - %s WHERE nick = %s", (bet, nickname))
                 self.record_transaction(nickname, bet, "lose")
                 connection.privmsg(target, f"Désolé! Vous avez perdu {bet} crédits.")
             self.db.commit()
+
+    def generate_local_jackpot(self):
+        # Implémentation de la logique de génération du jackpot local (identique à celle précédemment fournie)
+        pass
+    def generate_local_jackpot(self):
+    # Implémentation de la logique de génération du jackpot local
+        return random.randint(1, 100)
+
+    def generate_global_jackpot(self):
+        # Implémentation de la logique de génération du jackpot global (par exemple, un montant aléatoire entre 1 et 100)
+        return random.randint(1, 100)
+
+    def get_global_jackpot_amount(self):
+        # Renvoyer le montant actuel du jackpot global
+        return self.global_jackpot
+
+    def handle_global_jackpot_command(self, connection, target):
+        # Gérer la commande pour consulter le montant actuel du jackpot global
+        jackpot_amount = self.get_global_jackpot_amount()
+        connection.privmsg(target, f"Le montant actuel du jackpot global est de {jackpot_amount} crédits.")
+
+    def handle_command(self, connection, target, command):
+        # Méthode pour gérer les différentes commandes
+        if command == "!jackpot":
+            self.handle_global_jackpot_command(connection, target)
+        # Ajoutez d'autres commandes ici si nécessaire
+
+    def main_loop(self):
+        # Boucle principale pour gérer les messages entrants
+        while True:
+            # Code pour recevoir et traiter les messages
+            pass
+            
+    def generate_jackpot(self):
+        # Vous pouvez personnaliser cette fonction pour ajuster la logique de génération du jackpot
+        # Par exemple, vous pourriez vouloir qu'il y ait une probabilité plus faible d'obtenir un jackpot plus élevé
+        # Voici un exemple basé sur une distribution logarithmique où les montants plus élevés sont moins probables
+
+        # Déterminez la probabilité de différents montants de jackpot
+        probabilities = [0.1, 0.2, 0.3, 0.2, 0.1, 0.05, 0.03, 0.02]
+
+        # Déterminez les plages de montants de jackpot correspondant à ces probabilités
+        amounts = [10, 50, 100, 500, 1000, 5000, 10000, 50000]
+
+        # Utilisez les probabilités pour choisir un montant de jackpot
+        jackpot_amount = random.choices(amounts, probabilities)[0]
+        
+        return jackpot_amount
+
 
     def check_balance(self, connection, target, nickname):
         self.cursor.execute("SELECT balance FROM accounts WHERE nick = %s", (nickname,))
@@ -311,6 +371,7 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         connection.privmsg(nickname, "!bar - afiche les boisson disponible/!buy <montant> achète la boisson)")
         connection.privmsg(nickname, "!quiz - joue au quiz")
         connection.privmsg(nickname, "!juste_prix - lance le jeux du juste prix")
+        connection.privmsg(nickname, "!duck_hunt - jeux du chasseur de canard")
 
     def quit_bot(self, connection, nickname):
         connection.privmsg(nickname, "À bientôt!")
@@ -584,3 +645,56 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
     def record_transaction(self, nickname, amount, transaction_type):
         self.cursor.execute("INSERT INTO transactions (nick, amount, type) VALUES (%s, %s, %s)", (nickname, amount, transaction_type))
         self.db.commit()
+       
+    def start_duck_hunt(self, connection, target, nickname):
+        if not self.check_account(connection, target, nickname):
+            return
+        self.duck_hunt_running = True
+        self.duck_position = random.randint(1, 100)
+        connection.privmsg(target, f"Un canard sauvage apparaît! Utilisez !shoot <numéro> pour tirer (1-100).")
+
+    def shoot_duck(self, connection, target, nickname, message):
+        if not self.check_account(connection, target, nickname):
+            return
+        if not self.duck_hunt_running:
+            connection.privmsg(target, "Il n'y a pas de canard à chasser pour le moment.")
+            return
+        try:
+            shot_position = int(message.split()[1])
+        except (IndexError, ValueError):
+            connection.privmsg(target, "Veuillez spécifier un numéro valide pour tirer.")
+            return
+        if shot_position == self.duck_position:
+            connection.privmsg(target, f"Félicitations, {nickname}! Vous avez abattu le canard!")
+            reward = random.randint(20, 50)
+            self.cursor.execute("UPDATE accounts SET balance = balance - %s WHERE nick = %s", (10, nickname))
+            self.record_transaction(nickname, reward, "duck_hunt_win")
+            self.reset_duck_hunt()
+        else:
+            connection.privmsg(target, f"Dommage, {nickname}. Le canard s'est échappé.")
+            self.cursor.execute("UPDATE accounts SET balance = balance - %s WHERE nick = %s", (10, nickname))  # Pénalité de 10 crédits en cas de tir raté
+            self.record_transaction(nickname, 10, "duck_hunt_penalty")
+            self.reset_duck_hunt()
+        self.db.commit()
+
+    def reset_duck_hunt(self):
+        self.duck_hunt_running = False
+        self.duck_position = None      
+        
+    def create_account(self, nickname):
+        if nickname not in self.accounts:
+            self.accounts[nickname] = 100  # Créer un nouveau compte avec 100 crédits
+            return True
+        else:
+            return False  # Le compte existe déjà
+
+    def delete_account(self, connection, target, nickname):
+        if not self.check_account(connection, target, nickname):
+            return
+        self.cursor.execute("DELETE FROM accounts WHERE nick = %s", (nickname,))
+        self.db.commit()
+        connection.privmsg(target, f"Le compte de {nickname} a été supprimé avec succès.")
+        
+if __name__ == "__main__":
+    bot = CasinoBot()
+    bot.start()
