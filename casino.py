@@ -284,25 +284,22 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
                 global_jackpot = self.generate_global_jackpot()  # Générer le jackpot global
                 bet += local_jackpot + global_jackpot  # Ajouter les jackpots aux gains du joueur
                 self.local_jackpot += local_jackpot  # Mettre à jour le jackpot local
-                self.global_jackpot += global_jackpot  # Mettre à jour le jackpot global
                 self.cursor.execute("UPDATE accounts SET balance = balance + %s WHERE nick = %s", (bet, nickname))
                 self.record_transaction(nickname, bet, "win")
                 connection.privmsg(target, f"Félicitations! Vous avez gagné {bet} crédits. Jackpot local: {local_jackpot}. Jackpot global: {global_jackpot}")
             else:
+                self.global_jackpot += bet  # Ajouter les crédits perdus au jackpot global
                 self.cursor.execute("UPDATE accounts SET balance = balance - %s WHERE nick = %s", (bet, nickname))
                 self.record_transaction(nickname, bet, "lose")
                 connection.privmsg(target, f"Désolé! Vous avez perdu {bet} crédits.")
             self.db.commit()
 
     def generate_local_jackpot(self):
-        # Implémentation de la logique de génération du jackpot local (identique à celle précédemment fournie)
-        pass
-    def generate_local_jackpot(self):
-    # Implémentation de la logique de génération du jackpot local
+        # Implémentation de la logique de génération du jackpot local
         return random.randint(1, 100)
 
     def generate_global_jackpot(self):
-        # Implémentation de la logique de génération du jackpot global (par exemple, un montant aléatoire entre 1 et 100)
+        # Implémentation de la logique de génération du jackpot global
         return random.randint(1, 100)
 
     def get_global_jackpot_amount(self):
@@ -316,7 +313,7 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
 
     def handle_command(self, connection, target, command):
         # Méthode pour gérer les différentes commandes
-        if command == "!jackpot":
+        if command == "!globaljackpot":
             self.handle_global_jackpot_command(connection, target)
         # Ajoutez d'autres commandes ici si nécessaire
 
@@ -325,22 +322,6 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         while True:
             # Code pour recevoir et traiter les messages
             pass
-            
-    def generate_jackpot(self):
-        # Vous pouvez personnaliser cette fonction pour ajuster la logique de génération du jackpot
-        # Par exemple, vous pourriez vouloir qu'il y ait une probabilité plus faible d'obtenir un jackpot plus élevé
-        # Voici un exemple basé sur une distribution logarithmique où les montants plus élevés sont moins probables
-
-        # Déterminez la probabilité de différents montants de jackpot
-        probabilities = [0.1, 0.2, 0.3, 0.2, 0.1, 0.05, 0.03, 0.02]
-
-        # Déterminez les plages de montants de jackpot correspondant à ces probabilités
-        amounts = [10, 50, 100, 500, 1000, 5000, 10000, 50000]
-
-        # Utilisez les probabilités pour choisir un montant de jackpot
-        jackpot_amount = random.choices(amounts, probabilities)[0]
-        
-        return jackpot_amount
 
 
     def check_balance(self, connection, target, nickname):
@@ -388,9 +369,10 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
             connection.privmsg(target, "Aucun joueur trouvé.")
 
     def transfer_credits(self, connection, target, sender, recipient, amount):
-        if not self.check_account(connection, target, nickname):
-            return
         try:
+            # Effectuer des opérations avec self.cursor
+            self.cursor.execute("UPDATE accounts SET balance = balance - %s WHERE nick = %s", (amount, sender))
+            # Autres opérations...
             amount = int(amount)
         except ValueError:
             connection.privmsg(target, "Le montant doit être un nombre entier.")
@@ -422,6 +404,7 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         self.record_transaction(recipient, amount, "receive")
         self.db.commit()
         connection.privmsg(target, f"{sender} a transféré {amount} crédits à {recipient}.")
+
 
     def show_profile(self, connection, target, nickname):
         if not self.check_account(connection, target, nickname):
