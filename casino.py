@@ -19,6 +19,10 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         self.cursor.execute("CREATE TABLE IF NOT EXISTS transactions (id INT AUTO_INCREMENT PRIMARY KEY, nick VARCHAR(255), amount INT, type VARCHAR(10), timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         self.db.commit()
         
+        self.local_jackpot = 0  # Initialiser le jackpot local à zéro
+        self.global_jackpot = 0  # Initialiser le jackpot global à zéro
+        self.scores = {}  # Dictionnaire pour stocker les scores des joueurs
+        
         # Configuration du bot IRC
         server = "irc.extra-cool.fr"
         port = 6667
@@ -43,8 +47,6 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         }
         self.juste_prix_running = False
         self.duck_hunt_running = False
-        self.local_jackpot = 0  # Initialiser le jackpot local à zéro
-        self.global_jackpot = 0  # Initialiser le jackpot global à zéro
 
         
     def check_account(self, connection, target, nickname):
@@ -104,7 +106,6 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         connection.privmsg(target, f"{nickname}, vous avez acheté {drink.capitalize()} pour {price} crédits.")
 
     def on_pubmsg(self, connection, event):
-        message = event.arguments[0]
         if message.startswith("!register"):
             nickname = event.source.nick
             self.register_user(connection, event.target, nickname)
@@ -120,6 +121,14 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
             self.start_duck_hunt(connection, event.target, nickname)
         elif message.startswith("!shoot") and self.duck_hunt_running:
             self.shoot_duck(connection, event.target, nickname, message)
+            
+        message = event.arguments[0]
+        nickname = event.source.nick
+
+        # Vérifier si le message est une commande
+        if message.startswith("!deposit 1000"):
+            amount = int(message.split()[1])
+            self.deposit(connection, nickname, amount)
         
          # Gérer les autres commandes existantes...
         message = event.arguments[0]
@@ -192,7 +201,7 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
             self.play_guess_the_number(connection, event.target, nickname, message)
             message = event.arguments[0]
             
-            message = event.arguments[0]
+        message = event.arguments[0]
         nickname = event.source.nick  # Get user nickname from the event
         if message.startswith("!quiz"):
             self.play_quiz(connection, event.target, nickname)
@@ -214,9 +223,6 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
                     # Remove 10 credits from the player
                 else:
                     self.send_message(connection, event.target, f"Dommage, {nickname} ! Essayez à nouveau.")
-
-    def send_message(self, connection, target, message):
-        connection.privmsg(target, message)
             
     def gift_drink(self, connection, target, sender, recipient, drink):
         if not self.check_account(connection, target, nickname):
