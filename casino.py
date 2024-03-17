@@ -147,7 +147,7 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         elif message.startswith("!casino"):
             nickname = event.source.nick
             self.play_casino(connection, event.target, nickname, message)
-        elif message.startswith("!balance"):
+        elif message.startswith("!compte"):
             nickname = event.source.nick
             self.check_balance(connection, event.target, nickname)
         elif message.startswith("!aide"):
@@ -335,7 +335,7 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         connection.privmsg(nickname, "Commandes disponibles:")
         connection.privmsg(nickname, "!register - S'inscrire au casino")
         connection.privmsg(nickname, "!casino <mise> - Jouer au casino avec une mise donnée")
-        connection.privmsg(nickname, "!balance - Vérifier votre solde")
+        connection.privmsg(nickname, "!compte - Vérifier votre solde")
         connection.privmsg(nickname, "!transfer <destinataire> <montant> - Transférer des crédits à un autre joueur")
         connection.privmsg(nickname, "!profile - Voir votre profil")
         connection.privmsg(nickname, "!depot <montant> - Déposer de l'argent dans votre compte en banque")
@@ -676,30 +676,58 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         self.cursor.execute("DELETE FROM accounts WHERE nick = %s", (nickname,))
         self.db.commit()
         connection.privmsg(target, f"Le compte de {nickname} a été supprimé avec succès.")
-        
-    def handle_deposit(self, connection, target, nickname, message):
-        # Extract the amount from the message
-        args = message.split()
-        if len(args) != 2:
-            connection.privmsg(target, "Usage: !deposit <amount>")
-            return
 
-        try:
-            amount = int(args[1])
-        except ValueError:
-            connection.privmsg(target, "Amount must be a valid integer.")
-            return
 
-        if amount <= 0:
-            connection.privmsg(target, "Amount must be greater than zero.")
-            return
-
-        # Call the deposit method to add credits to the user's bank account
-        self.deposit(connection, target, nickname, amount)
-
-    def deposit(self, connection, target, nickname, amount):
-        # Update the user's balance in the database
-        self.cursor.execute("UPDATE accounts SET balance = balance + %s WHERE nick = %s", (amount, nickname))
-        self.record_transaction(nickname, amount, "deposit")
+    
+    def handle_win(self, connection, target, nickname, amount):
+    # Ajouter les crédits gagnés au porte-monnaie
+        self.cursor.execute("UPDATE comptes SET porte_monnaie = porte_monnaie + %s WHERE surnom = %s", (amount, nickname))
+        self.record_transaction(nickname, amount, "gain")
         self.db.commit()
-        connection.privmsg(target, f"{nickname}, {amount} credits have been deposited into your bank account.")
+        connection.privmsg(target, f"{nickname}, vous avez gagné {amount} crédits !")
+
+    # Assurez-vous que cette ligne est indentée à l'intérieur de la méthode
+
+    def handle_deposit(self, connection, target, nickname, amount):
+    # Retirer les crédits du porte-monnaie et les ajouter au compte bancaire
+        self.cursor.execute("UPDATE comptes SET porte_monnaie = porte_monnaie - %s, credits_banque = credits_banque + %s WHERE surnom = %s", (amount, amount, nickname))
+        self.record_transaction(nickname, amount, "dépôt")
+        self.db.commit()
+        connection.privmsg(target, f"{nickname}, {amount} crédits ont été déposés sur votre compte bancaire.")
+
+    # Assurez-vous que cette ligne est indentée à l'intérieur de la méthode
+
+
+
+    def enregistrer_transaction(self, nickname, amount, transaction_type):
+    # Enregistrer la transaction dans la base de données
+        try:
+            self.cursor.execute("INSERT INTO transactions (nickname, amount, transaction_type) VALUES (%s, %s, %s)",
+                        (nickname, amount, transaction_type))
+        except Exception as e:
+            print(f"Erreur lors de l'enregistrement de la transaction : {e}")
+
+
+    def handle_balance(self, connection, target, nickname):
+        # Récupérer le solde de l'utilisateur depuis la base de données
+        self.cursor.execute("UPDATE comptes SET porte_monnaie = porte_monnaie - %s, credits_banque = credits_banque + %s WHERE surnom = %s", (amount, amount, nickname))
+        row = self.cursor.fetchone()
+        if row:
+            balance = row[0]
+            connection.privmsg(target, f"{nickname}, votre solde actuel est de {balance} crédits.")
+        else:
+            connection.privmsg(target, "Vous n'avez pas encore de compte bancaire.")
+
+    def record_transaction(self, nickname, amount, transaction_type):
+        # Code pour enregistrer la transaction dans la base de données
+        try:
+            self.cursor.execute("INSERT INTO transactions (nickname, amount, transaction_type) VALUES (%s, %s, %s)",
+                                (nickname, amount, transaction_type))
+            self.db.commit()
+        except Exception as e:
+            print(f"Erreur lors de l'enregistrement de la transaction : {e}")
+            self.db.rollback()
+        
+if __name__ == "__main__":
+    bot = CasinoBot()
+    bot.start()
