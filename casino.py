@@ -106,11 +106,12 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         connection.privmsg(target, f"{nickname}, vous avez acheté {drink.capitalize()} pour {price} crédits.")
 
     def on_pubmsg(self, connection, event):
+        message = event.arguments[0]
+        nickname = event.source.nick  # Get user nickname from the event
         if message.startswith("!register"):
-            nickname = event.source.nick
             self.register_user(connection, event.target, nickname)
-        nickname = event.source.nick  # Obtenir le pseudo de l'utilisateur
-        
+        elif message.startswith("!deposit"):
+            self.handle_deposit(connection, event.target, nickname, message)        
         nickname = event.source.nick
         if message.startswith("!delete_account"):
             self.delete_account(connection, event.target, nickname)
@@ -121,14 +122,6 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
             self.start_duck_hunt(connection, event.target, nickname)
         elif message.startswith("!shoot") and self.duck_hunt_running:
             self.shoot_duck(connection, event.target, nickname, message)
-            
-        message = event.arguments[0]
-        nickname = event.source.nick
-
-        # Vérifier si le message est une commande
-        if message.startswith("!deposit 1000"):
-            amount = int(message.split()[1])
-            self.deposit(connection, nickname, amount)
         
          # Gérer les autres commandes existantes...
         message = event.arguments[0]
@@ -684,6 +677,29 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         self.db.commit()
         connection.privmsg(target, f"Le compte de {nickname} a été supprimé avec succès.")
         
-if __name__ == "__main__":
-    bot = CasinoBot()
-    bot.start()
+    def handle_deposit(self, connection, target, nickname, message):
+        # Extract the amount from the message
+        args = message.split()
+        if len(args) != 2:
+            connection.privmsg(target, "Usage: !deposit <amount>")
+            return
+
+        try:
+            amount = int(args[1])
+        except ValueError:
+            connection.privmsg(target, "Amount must be a valid integer.")
+            return
+
+        if amount <= 0:
+            connection.privmsg(target, "Amount must be greater than zero.")
+            return
+
+        # Call the deposit method to add credits to the user's bank account
+        self.deposit(connection, target, nickname, amount)
+
+    def deposit(self, connection, target, nickname, amount):
+        # Update the user's balance in the database
+        self.cursor.execute("UPDATE accounts SET balance = balance + %s WHERE nick = %s", (amount, nickname))
+        self.record_transaction(nickname, amount, "deposit")
+        self.db.commit()
+        connection.privmsg(target, f"{nickname}, {amount} credits have been deposited into your bank account.")
