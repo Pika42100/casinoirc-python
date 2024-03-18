@@ -676,8 +676,6 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         self.cursor.execute("DELETE FROM accounts WHERE nick = %s", (nickname,))
         self.db.commit()
         connection.privmsg(target, f"Le compte de {nickname} a été supprimé avec succès.")
-
-
     
     def handle_win(self, connection, target, nickname, amount):
     # Ajouter les crédits gagnés au porte-monnaie
@@ -696,8 +694,6 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         connection.privmsg(target, f"{nickname}, {amount} crédits ont été déposés sur votre compte bancaire.")
 
     # Assurez-vous que cette ligne est indentée à l'intérieur de la méthode
-
-
 
     def enregistrer_transaction(self, nickname, amount, transaction_type):
     # Enregistrer la transaction dans la base de données
