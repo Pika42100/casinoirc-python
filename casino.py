@@ -15,8 +15,8 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
                                   database='casino',
                                   cursorclass=pymysql.cursors.DictCursor)
         self.cursor = self.db.cursor()
-        self.cursor.execute("CREATE TABLE IF NOT EXISTS accounts (nick VARCHAR(255), balance INT, last_credit_request DATE)")
-        self.cursor.execute("CREATE TABLE IF NOT EXISTS transactions (id INT AUTO_INCREMENT PRIMARY KEY, nick VARCHAR(255), amount INT, type VARCHAR(10), timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        self.cursor.execute("CREATE TABLE IF NOT EXISTS accounts (nick VARCHAR(30), balance INT, last_credit_request DATE)")
+        self.cursor.execute("CREATE TABLE IF NOT EXISTS transactions (id INT AUTO_INCREMENT PRIMARY KEY, nick VARCHAR(30), amount INT, type VARCHAR(10), timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         self.db.commit()
         
         self.local_jackpot = 0  # Initialiser le jackpot local à zéro
@@ -53,7 +53,7 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         self.cursor.execute("SELECT * FROM accounts WHERE nick = %s", (nickname,))
         account = self.cursor.fetchone()
         if account is None:
-            connection.privmsg(target, f"Vous devez d'abord vous inscrire avec !register, {nickname}!")
+            connection.privmsg(target, f"\x034Vous devez d'abord vous inscrire avec !register, {nickname}!")
             return False
         return True
 
@@ -67,6 +67,7 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
     def on_welcome(self, connection, event):
         connection.join("#extra-cool")
 
+        # Initialise la liste des boissons disponibles
         self.drinks = {
             "coca": 5,
             "bière": 10,
@@ -75,7 +76,7 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         }
 
     # Fonction pour afficher la liste des boissons disponibles au bar
-    def show_drinks(self, connection, target):
+    def show_drinks(self, connection, target, nickname):
         if not self.check_account(connection, target, nickname):
             return
         drinks_list = ", ".join([f"{drink.capitalize()} ({price} crédits)" for drink, price in self.drinks.items()])
@@ -110,12 +111,27 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         nickname = event.source.nick  # Get user nickname from the event
         if message.startswith("!register"):
             self.register_user(connection, event.target, nickname)
-        elif message.startswith("!deposit"):
-            self.handle_deposit(connection, event.target, nickname, message)        
+        message = event.arguments[0]
         nickname = event.source.nick
+        # Vérifier si le message est une commande pour déposer des crédits
+        if message.startswith("!handle_deposit"):
+            # Extraire le montant du message
+            parts = message.split(" ")
+            if len(parts) != 2:
+                connection.privmsg(event.target, "Usage: !handle_deposit <montant>")
+                return
+            amount = parts[1]        
+            # Vérifier si le montant est un entier
+            try:
+                amount = int(amount)
+            except ValueError:
+                connection.privmsg(event.target, "Le montant doit être un nombre entier.")
+                return        
+            self.handle_deposit(connection, event.target, nickname, amount)
+        elif message.startswith("!retirer"):
+            self.handle_withdrawal(connection, event.target, nickname, message)
         if message.startswith("!delete_account"):
-            self.delete_account(connection, event.target, nickname)
-            
+            self.delete_account(connection, event.target, nickname)         
         message = event.arguments[0]
         nickname = event.source.nick
         if message.startswith("!duck_hunt") and not self.duck_hunt_running:
@@ -123,10 +139,8 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         elif message.startswith("!shoot") and self.duck_hunt_running:
             self.shoot_duck(connection, event.target, nickname, message)
         
-         # Gérer les autres commandes existantes...
-        message = event.arguments[0]
-        if message.startswith("!bar"):
-            self.show_drinks(connection, event.target)
+        elif message.startswith("!drinks"):  # Ajout de la commande pour afficher les boissons
+            self.show_drinks(connection, event.target, nickname)  # Fournir le pseudonyme de l'utilisateur
         elif message.startswith("!buy"):
             args = message.split()
             if len(args) != 2:
@@ -149,7 +163,7 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
             self.play_casino(connection, event.target, nickname, message)
         elif message.startswith("!compte"):
             nickname = event.source.nick
-            self.check_balance(connection, event.target, nickname)
+            self.check_bank_balance(connection, event.target, nickname)
         elif message.startswith("!aide"):
             self.send_help(connection, event.target, event.source.nick)
         elif message.startswith("!quit"):
@@ -216,7 +230,7 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
                     # Remove 10 credits from the player
                 else:
                     self.send_message(connection, event.target, f"Dommage, {nickname} ! Essayez à nouveau.")
-            
+                    
     def gift_drink(self, connection, target, sender, recipient, drink):
         if not self.check_account(connection, target, nickname):
             return
@@ -228,7 +242,7 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         self.cursor.execute("SELECT balance FROM accounts WHERE nick = %s", (sender,))
         sender_account = self.cursor.fetchone()
         if sender_account is None:
-            connection.privmsg(target, f"Vous devez d'abord vous inscrire avec !register, {sender}!")
+            connection.privmsg(target, f"\x034Vous devez d'abord vous inscrire avec !register, {sender}!")
             return
 
         self.cursor.execute("SELECT balance FROM accounts WHERE nick = %s", (recipient,))
@@ -259,39 +273,28 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
 
 
     def play_casino(self, connection, target, nickname, message):
-        if not self.check_account(connection, target, nickname):
-            return
         args = message.split()
         if len(args) != 2:
-            connection.privmsg(target, "Usage: !casino <mise>")
+            connection.privmsg(target, "Utilisation : !casino <parier>")
             return
+
         try:
             bet = int(args[1])
         except ValueError:
             connection.privmsg(target, "La mise doit être un nombre entier.")
             return
-        self.cursor.execute("SELECT balance FROM accounts WHERE nick = %s", (nickname,))
-        account = self.cursor.fetchone()
-        if account is None:
-            connection.privmsg(target, f"Vous devez d'abord vous inscrire avec !register, {nickname}!")
-        elif account['balance'] < bet:
-            connection.privmsg(target, "Vous n'avez pas assez de crédits.")
+
+        # Votre logique de jeu ici
+        outcome = random.choice(["win", "lose"])
+        if outcome == "win":
+            amount_won = bet * 2  # Par exemple, le joueur gagne deux fois sa mise
+            self.record_transaction(nickname, amount_won, "win")
+            self.record_player_winnings(nickname, amount_won, "casino")
+            connection.privmsg(target, f"Toutes nos félicitations! Tu as gagné {amount_won} credits.")
         else:
-            outcome = random.choice(["win", "lose"])
-            if outcome == "win":
-                local_jackpot = self.generate_local_jackpot()  # Générer le jackpot local
-                global_jackpot = self.generate_global_jackpot()  # Générer le jackpot global
-                bet += local_jackpot + global_jackpot  # Ajouter les jackpots aux gains du joueur
-                self.local_jackpot += local_jackpot  # Mettre à jour le jackpot local
-                self.cursor.execute("UPDATE accounts SET balance = balance + %s WHERE nick = %s", (bet, nickname))
-                self.record_transaction(nickname, bet, "win")
-                connection.privmsg(target, f"Félicitations! Vous avez gagné {bet} crédits. Jackpot local: {local_jackpot}. Jackpot global: {global_jackpot}")
-            else:
-                self.global_jackpot += bet  # Ajouter les crédits perdus au jackpot global
-                self.cursor.execute("UPDATE accounts SET balance = balance - %s WHERE nick = %s", (bet, nickname))
-                self.record_transaction(nickname, bet, "lose")
-                connection.privmsg(target, f"Désolé! Vous avez perdu {bet} crédits.")
-            self.db.commit()
+            amount_lost = bet
+            self.record_transaction(nickname, amount_lost, "lose")
+            connection.privmsg(target, f"désolé tu as perdu {amount_lost} credits.")
 
     def generate_local_jackpot(self):
         # Implémentation de la logique de génération du jackpot local
@@ -323,14 +326,6 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
             pass
 
 
-    def check_balance(self, connection, target, nickname):
-        self.cursor.execute("SELECT balance FROM accounts WHERE nick = %s", (nickname,))
-        account = self.cursor.fetchone()
-        if account is not None:
-            connection.privmsg(target, f"Votre solde est de {account['balance']} crédits.")
-        else:
-            connection.privmsg(target, f"Vous devez d'abord vous inscrire avec !register, {nickname}!")
-
     def send_help(self, connection, target, nickname):
         connection.privmsg(nickname, "Commandes disponibles:")
         connection.privmsg(nickname, "!register - S'inscrire au casino")
@@ -338,7 +333,6 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         connection.privmsg(nickname, "!compte - Vérifier votre solde")
         connection.privmsg(nickname, "!transfer <destinataire> <montant> - Transférer des crédits à un autre joueur")
         connection.privmsg(nickname, "!profile - Voir votre profil")
-        connection.privmsg(nickname, "!depot <montant> - Déposer de l'argent dans votre compte en banque")
         connection.privmsg(nickname, "!credit - Demander un crédit bancaire 1 par jour")
         connection.privmsg(nickname, "!delete_account - Supprimer votre compte(1fois par semaine)")
         connection.privmsg(nickname, "!top10 - Afficher les 10 meilleurs joueurs")
@@ -452,31 +446,43 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
     def play_roulette(self, connection, target, nickname, message):
         if not self.check_account(connection, target, nickname):
             return
-        if len(message.split()) != 2:
-            connection.privmsg(target, "Usage: !roulette <mise>")
+        if len(message.split()) != 3:
+            connection.privmsg(target, "Usage: !roulette <couleur> <mise>")
             return
+        bet_color = message.split()[1].lower()
+        bet_amount = message.split()[2]
+
         try:
-            bet = int(message.split()[1])
+            bet_amount = int(bet_amount)
         except ValueError:
             connection.privmsg(target, "La mise doit être un nombre entier.")
             return
+        # Vérifie si la couleur est valide
+        if bet_color not in ['rouge', 'noir']:
+            connection.privmsg(target, "La couleur doit être 'rouge' ou 'noir'.")
+            return
         self.cursor.execute("SELECT balance FROM accounts WHERE nick = %s", (nickname,))
         account = self.cursor.fetchone()
+    
         if account is None:
             connection.privmsg(target, f"Vous devez d'abord vous inscrire avec !register, {nickname}!")
-        elif account['balance'] < bet:
+            return
+        elif account['balance'] < bet_amount:
             connection.privmsg(target, "Vous n'avez pas assez de crédits.")
+            return
+        # Simule le lancer de la roulette
+        outcomes = ['rouge', 'noir']
+        result = random.choice(outcomes)
+
+        if result == bet_color:
+            winnings = bet_amount * 2
+            self.cursor.execute("UPDATE accounts SET balance = balance + %s WHERE nick = %s", (winnings, nickname))
+            self.record_transaction(nickname, winnings, "win")
+            connection.privmsg(target, f"Félicitations! Vous avez gagné {winnings} crédits en obtenant {result}.")
         else:
-            outcomes = ['rouge', 'noir']
-            result = random.choice(outcomes)
-            if result == "rouge":
-                self.cursor.execute("UPDATE accounts SET balance = balance + %s WHERE nick = %s", (bet, nickname))
-                self.record_transaction(nickname, bet, "win")
-                connection.privmsg(target, f"Félicitations! Vous avez gagné {bet} crédits en obtenant {result}.")
-            else:
-                self.cursor.execute("UPDATE accounts SET balance = balance - %s WHERE nick = %s", (bet, nickname))
-                self.record_transaction(nickname, bet, "lose")
-                connection.privmsg(target, f"Désolé! Vous avez perdu {bet} crédits en obtenant {result}.")
+            self.cursor.execute("UPDATE accounts SET balance = balance - %s WHERE nick = %s", (bet_amount, nickname))
+            self.record_transaction(nickname, bet_amount, "lose")
+            connection.privmsg(target, f"Désolé! Vous avez perdu {bet_amount} crédits en obtenant {result}.")
             self.db.commit()
 
     def play_dice(self, connection, target, nickname, message):
@@ -493,7 +499,7 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         self.cursor.execute("SELECT balance FROM accounts WHERE nick = %s", (nickname,))
         account = self.cursor.fetchone()
         if account is None:
-            connection.privmsg(target, f"Vous devez d'abord vous inscrire avec !register, {nickname}!")
+            connection.privmsg(target, f"\x034Vous devez d'abord vous inscrire avec !register, {nickname}!")
         elif account['balance'] < bet:
             connection.privmsg(target, "Vous n'avez pas assez de crédits.")
         else:
@@ -522,7 +528,7 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         self.cursor.execute("SELECT balance FROM accounts WHERE nick = %s", (nickname,))
         account = self.cursor.fetchone()
         if account is None:
-            connection.privmsg(target, f"Vous devez d'abord vous inscrire avec !register, {nickname}!")
+            connection.privmsg(target, f"\x034Vous devez d'abord vous inscrire avec !register, {nickname}!")
         elif account['balance'] < bet:
             connection.privmsg(target, "Vous n'avez pas assez de crédits.")
         else:
@@ -678,22 +684,51 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
         connection.privmsg(target, f"Le compte de {nickname} a été supprimé avec succès.")
     
     def handle_win(self, connection, target, nickname, amount):
-    # Ajouter les crédits gagnés au porte-monnaie
+        # Ajouter les crédits gagnés au porte-monnaie
         self.cursor.execute("UPDATE comptes SET porte_monnaie = porte_monnaie + %s WHERE surnom = %s", (amount, nickname))
         self.record_transaction(nickname, amount, "gain")
         self.db.commit()
         connection.privmsg(target, f"{nickname}, vous avez gagné {amount} crédits !")
 
     # Assurez-vous que cette ligne est indentée à l'intérieur de la méthode
-
-    def handle_deposit(self, connection, target, nickname, amount):
-    # Retirer les crédits du porte-monnaie et les ajouter au compte bancaire
-        self.cursor.execute("UPDATE comptes SET porte_monnaie = porte_monnaie - %s, credits_banque = credits_banque + %s WHERE surnom = %s", (amount, amount, nickname))
-        self.record_transaction(nickname, amount, "dépôt")
+        
+    def add_credits(self, connection, target, nickname, amount):
+        # Ajoute les crédits au solde du joueur
+        self.cursor.execute("UPDATE accounts SET game_credits = game_credits + %s WHERE nick = %s", (amount, nickname))
         self.db.commit()
-        connection.privmsg(target, f"{nickname}, {amount} crédits ont été déposés sur votre compte bancaire.")
+        connection.privmsg(target, f"{nickname}, {amount} les crédits ont été ajoutés à votre compte de jeu.")
+        
+    def check_bank_balance(self, connection, target, nickname):
+        # Récupère le solde bancaire du joueur depuis la base de données
+        self.cursor.execute("SELECT bank_balance FROM accounts WHERE nick = %s", (nickname,))
+        bank_balance = self.cursor.fetchone()
+        if bank_balance is None:
+            connection.privmsg(target, f"Vous devez d'abord vous inscrire avec !register, {nickname}!")
+        else:
+            connection.privmsg(target, f"Votre solde bancaire est de {bank_balance['bank_balance']} crédits.")
 
-    # Assurez-vous que cette ligne est indentée à l'intérieur de la méthode
+        
+    # Méthode pour gérer le dépôt de crédits dans le compte bancaire du joueur
+    def handle_deposit(self, connection, target, nickname, amount):
+        # Vérifie si le montant du dépôt est valide
+        if amount <= 0:
+            connection.privmsg(target, f"{nickname}, le montant doit être supérieur à zéro.")
+            return
+        self.db.commit()
+        connection.privmsg(target, f"{nickname}, {amount} crédits ont été déposés dans votre compte bancaire.")
+        # Met à jour le solde du compte bancaire du joueur
+        self.cursor.execute("UPDATE accounts SET bank_balance = bank_balance + %s WHERE nick = %s", (amount, nickname))
+        # Enregistre la transaction de dépôt
+        self.record_transaction(nickname, amount, "deposit")
+        # Déduit les crédits déposés du solde des crédits de jeu du joueur
+        self.cursor.execute("UPDATE accounts SET game_credits = game_credits - %s WHERE nick = %s", (amount, nickname))    
+        # Ajoute les crédits déposés au solde de la banque
+        self.cursor.execute("UPDATE accounts SET bank_balance = bank_balance + %s WHERE nick = %s", (amount, nickname))
+        # Enregistre la transaction de dépôt
+        self.record_transaction(nickname, amount, "deposit")    
+        self.db.commit()
+        connection.privmsg(target, f"{nickname}, {amount} crédits ont été déposés dans votre compte bancaire.")
+
 
     def enregistrer_transaction(self, nickname, amount, transaction_type):
     # Enregistrer la transaction dans la base de données
@@ -715,15 +750,50 @@ class CasinoBot(irc.bot.SingleServerIRCBot):
             connection.privmsg(target, "Vous n'avez pas encore de compte bancaire.")
 
     def record_transaction(self, nickname, amount, transaction_type):
-        # Code pour enregistrer la transaction dans la base de données
         try:
+            # Insérer la transaction dans la table des transactions
             self.cursor.execute("INSERT INTO transactions (nickname, amount, transaction_type) VALUES (%s, %s, %s)",
                                 (nickname, amount, transaction_type))
             self.db.commit()
         except Exception as e:
-            print(f"Erreur lors de l'enregistrement de la transaction : {e}")
-            self.db.rollback()
-        
+            print("Error executing SQL query:", e)
+
+    def record_player_winnings(self, nickname, amount, game_type):
+        try:
+            # Insérer les gains du joueur dans la table des gains des joueurs
+            self.cursor.execute("INSERT INTO player_winnings (nickname, amount, game_type) VALUES (%s, %s, %s)",
+                                (nickname, amount, game_type))
+            self.db.commit()
+        except Exception as e:
+            print("Error executing SQL query:", e)
+
+    def withdraw(self, connection, target, nickname, amount):
+        self.cursor.execute("SELECT balance FROM accounts WHERE nick = %s", (nickname,))
+        account = self.cursor.fetchone()
+        if account is None:
+            connection.privmsg(target, f"Vous devez d'abord vous inscrire avec !register, {nickname}!")
+        elif account['balance'] < amount:
+            connection.privmsg(target, "Vous n'avez pas assez de crédits.")
+        else:
+            self.cursor.execute("UPDATE accounts SET balance = balance - %s WHERE nick = %s", (amount, nickname))
+            self.db.commit()
+        connection.privmsg(target, f"{nickname}, {amount} crédits ont été retirés de votre compte bancaire.")
+
+
+    def handle_withdrawal(self, connection, target, nickname, message):
+        # Extraire le montant de la commande
+        args = message.split()
+        if len(args) != 2:
+            connection.privmsg(target, "Usage: !withdraw <montant>")
+            return
+
+        # Appeler la méthode de retrait pour retirer des crédits du compte bancaire de l'utilisateur
+        self.withdraw(connection, target, nickname, args[1])
+
+    def record_player_winnings(self, player_id, amount, game_type):
+        self.cursor.execute("INSERT INTO player_winnings (player_id, amount, game_type) VALUES (%s, %s, %s)", (player_id, amount, game_type))
+        self.db.commit()        
+
 if __name__ == "__main__":
     bot = CasinoBot()
     bot.start()
