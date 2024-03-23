@@ -10,7 +10,7 @@ import time
 # Configuration de la base de données
 db_host = "localhost"
 db_user = "casino"
-db_password = "mot-de-pass"
+db_password = "votre-mot-de-pass"
 db_name = "casino"
 
 # Connexion à la base de données
