@@ -14,7 +14,7 @@ with open('bot.pid', 'w', encoding='utf-8') as f:
 # Configuration de la base de données
 db_host = "localhost"
 db_user = "casino"
-db_password = "database-mot-de-pass"
+db_password = "mot-de-pass"
 db_name = "casino"
 
 # Connexion à la base de données
