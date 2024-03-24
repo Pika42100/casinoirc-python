@@ -1,16 +1,20 @@
+import os
 import socket
 import re
 import mariadb
 from datetime import datetime, timedelta
 import random
 from colorama import Fore
-import time
+import signal
 
+# Écriture du Pid
+with open('bot.pid', 'w', encoding='utf-8') as f:
+    f.write(str(os.getpid()))
 
 # Configuration de la base de données
 db_host = "localhost"
 db_user = "casino"
-db_password = "votre-mot-de-pass"
+db_password = "mot-de-pass"
 db_name = "casino"
 
 # Connexion à la base de données
@@ -172,7 +176,6 @@ def gestion_commande(nom_utilisateur, commande):
         return f"{Fore.RED}Vous devez d'abord vous enregistrer avec !register pour jouer.{Fore.END}"
 
 
-
 # Définition des couleurs
 class Color:
     PURPLE = '\033[95m'
@@ -274,29 +277,31 @@ def gestion_commande_roulette(nom_utilisateur, commande):
         if len(mots) == 2:
             montant = int(mots[1])
             solde = get_solde(nom_utilisateur)
-            if solde is not None:  # Vérifie si le solde est trouvé
+            if solde:
                 solde_banque, solde_jeux = solde
-                if solde_jeux >= montant:  # Vérifie si le solde en jeux est suffisant
+                if solde_banque >= montant:
                     resultat_jeu = jeu_roulette()
                     numero_gagnant, couleur, parite = resultat_jeu
                     if numero_gagnant == 0:
                         solde_jeux -= montant  
-                        message = f"La bille est tombée sur le 0. Vous avez perdu {montant} crédits ! Votre solde en jeux est de {solde_jeux}."
+                        message = f"La bille est tombée sur le 0. Vous avez perdu {montant} crédits ! Votre solde en banque est de {solde_banque}. Votre solde en jeux est de {solde_jeux}."
                     else:
                         if gagner_ou_perdre():
+                            solde_banque -= montant
                             solde_jeux += montant * 2  
-                            message = f"La bille est tombée sur le {numero_gagnant} ({couleur}, {parite}). Vous avez gagné {montant} crédits ! Votre solde en jeux est de {solde_jeux}."
+                            message = f"La bille est tombée sur le {numero_gagnant} ({couleur}, {parite}). Vous avez gagné {montant} crédits ! Votre solde en banque est de {solde_banque}. Votre solde en jeux est de {solde_jeux}."
                         else:
+                            solde_banque -= montant
                             solde_jeux -= montant  
-                            message = f"La bille est tombée sur le {numero_gagnant} ({couleur}, {parite}). Vous avez perdu {montant} crédits ! Votre solde en jeux est de {solde_jeux}."
+                            message = f"La bille est tombée sur le {numero_gagnant} ({couleur}, {parite}). Vous avez perdu {montant} crédits ! Votre solde en banque est de {solde_banque}. Votre solde en jeux est de {solde_jeux}."
                     if mettre_a_jour_solde(nom_utilisateur, solde_banque, solde_jeux):
                         return message
                     else:
-                        return "Une erreur est survenue lors de la mise à jour du solde."
+                        return f"{Color.RED}Une erreur est survenue lors de la mise à jour du solde.{Color.END}"
                 else:
-                    return "Solde insuffisant dans votre compte jeux."
+                    return "Solde insuffisant dans votre banque."
             else:
-                return "Utilisateur non trouvé, veuillez d'abord vous enregistrer avec la commande !register."
+                return "Utilisateur non trouvé veuiller dabors vous enregistre avec la commande !register."
         else:
             return "Commande invalide. Utilisation : !roulette [montant]"
     else:
@@ -343,33 +348,7 @@ def jeu_slots(nom_utilisateur, montant_mise):
             return f"Dommage ! Vous n'avez rien gagné cette fois-ci. Résultat: {' - '.join(symboles_tires)}."
     else:
         return "Solde insuffisant dans votre banque pour effectuer cette mise."
-    
 
-def jeu_des(nom_utilisateur, mise):
-    if mise <= 0:
-        return "La mise doit être supérieure à zéro."
-    
-    solde_banque = get_solde_banque(nom_utilisateur)
-    if solde_banque is None:
-        return "Utilisateur non trouvé. Veuillez d'abord vous enregistrer avec la commande !register."
-
-    if solde_banque < mise:
-        return "Solde insuffisant dans votre compte en banque."
-
-    # Simuler le lancer de dés
-    resultat = random.randint(1, 6)
-    
-    if resultat == 6:  # Si le résultat est 6, le joueur gagne 4 fois sa mise
-        gain = mise * 4
-        solde_banque -= mise
-        solde_jeux = get_solde_jeux(nom_utilisateur) + gain
-        mettre_a_jour_solde(nom_utilisateur, solde_banque, solde_jeux)
-        return f"Vous avez lancé un 6 ! Vous gagnez {gain} crédits de jeux. Votre solde en jeux est maintenant de {solde_jeux}."
-    else:
-        solde_banque -= mise
-        mettre_a_jour_solde_banque(nom_utilisateur, solde_banque)
-        return f"Vous avez lancé un {resultat}. Dommage, vous avez perdu votre mise. Votre solde en banque est maintenant de {solde_banque}."
-    
 articles = {
     "Livre": 50,
     "Montre": 100,
@@ -449,7 +428,6 @@ def envoyer_aide(nom_utilisateur):
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !roulette [nombre] : jouer au jeux de la roulette.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !casino [jeu] [montant] : joue au jeu du casino (ex: !casino 50).\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !slots [montant] : joue au machine a sous.\n".encode())
-        irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !des [montant] : joue au jeux de dès.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !quit : Déconnecter le bot.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !join [#channel] : fait joindre le bot sur un channel.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !part [#channel] : fait Partire le bot d'un channel.\n".encode())
@@ -462,7 +440,6 @@ def envoyer_aide(nom_utilisateur):
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !casino [jeu] [montant] : joue au jeu du casino (ex: !casino 50).\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !roulette [nombre] : jouer au jeux de la roulette.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !slots [montant] : joue au machine a sous.\n".encode())
-        irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !des [montant] : joue au jeux de dès.\n".encode())
 
 # Ajouter une commande pour supprimer un compte
 def supprimer_compte(administrateur):
@@ -478,32 +455,24 @@ def supprimer_compte(administrateur):
 # Configuration IRC
 server = "irc.extra-cool.fr"
 port = 6667
+channel = "#casino"
 bot_name = "CasinoBot"
-default_channel = "#extra-cool"  # Salon par défaut à rejoindre
-current_channel = default_channel  # Salon actuel
-channel_to_join = True  # Indicateur pour savoir si le bot a déjà rejoint un salon
-
-# Fonction pour rejoindre un salon spécifique
-def rejoindre_salon(channel):
-    irc.send(f"JOIN {channel}\n".encode())
-    global current_channel
-    current_channel = channel
-    global channel_to_join
-    channel_to_join = True
 
 # Connexion au serveur IRC
 irc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 irc.connect((server, port))
 irc.send(f"USER {bot_name} {bot_name} {bot_name} :\x0310 bot casino beta-0.01 by Max.\n".encode())
 irc.send(f"NICK {bot_name}\n".encode())
+irc.send(f"JOIN {channel}\n".encode())
 
-# Appel pour rejoindre le salon spécifié
-rejoindre_salon("#casino")  # Remplacez "#votre_salon" par le nom de votre salon
 
 # Boucle principale
 while True:
     message = irc.recv(2048).decode("UTF-8")
     print(message)
+    f = open("bot.log", "a")
+    f.write(message)
+    f.close()
     if "PING" in message:
         cookie = message.split()[1]
         irc.send(f"PONG {cookie}\n".encode())
@@ -511,7 +480,6 @@ while True:
         sender_match = re.match(r"^:(.*?)!", message)
         channel_match = re.search(r"PRIVMSG (#\S+)", message)
         msg_match = re.search(r"PRIVMSG #\S+ :(.*)", message)
-        
         if sender_match and channel_match and msg_match:
             sender = sender_match.group(1)
             channel = channel_match.group(1)
@@ -597,11 +565,6 @@ while True:
                 irc.send(f"PRIVMSG {channel} :{response}\n".encode())
             elif msg.startswith("!aide"):
                 envoyer_aide(sender)
-            elif msg.startswith("!quit"):
-                if sender in administrateurs:
-                    irc.send("QUIT\n".encode())
-                else:
-                    irc.send(f"PRIVMSG {sender} :Vous n'êtes pas autorisé à exécuter cette commande.\n".encode())
                     # Intégration de la commande pour jouer au Juste Prix
             elif msg.startswith("!juste_prix"):
                 mots = msg.split()
@@ -632,11 +595,12 @@ while True:
                     # Faire rejoindre le bot au salon
                     irc.send(f"JOIN {channel_to_join}\n".encode())
                     # Envoyer un message pour indiquer que le bot a bien rejoint le salon
-                    irc.send(f"PRIVMSG {sender} :Bot rejoint le salon {channel_to_join} avec succès.\n".encode())
+                    irc.send(f"PRIVMSG {channel} :je rejoint {channel_to_join} le salon.\n".encode())
                 else:
                     irc.send(f"PRIVMSG {sender} :Commande invalide. Utilisation : !join [nom_du_salon]\n".encode())
             else:
                 irc.send(f"PRIVMSG {sender} :Vous n'êtes pas autorisé à utiliser cette commande.\n".encode())
+
         elif msg.startswith("!part"):
             if sender in administrateurs:
                 # Extraire le nom du salon à quitter
@@ -646,20 +610,47 @@ while True:
                     # Faire quitter le bot du salon
                     irc.send(f"PART {channel_to_leave}\n".encode())
                     # Envoyer un message pour indiquer que le bot a bien quitté le salon
-                    irc.send(f"PRIVMSG {sender} :Bot quitte le salon {channel_to_leave} avec succès.\n".encode())
+                    irc.send(f"PRIVMSG {channel} :ok je quitte le salon {channel_to_leave} ah bientôt.\n".encode())
                 else:
                     irc.send(f"PRIVMSG {sender} :Commande invalide. Utilisation : !part [nom_du_salon]\n".encode())
             else:
                 irc.send(f"PRIVMSG {sender} :Vous n'êtes pas autorisé à utiliser cette commande.\n".encode())
-        elif msg.startswith("!des"):
-            mots = msg.split()
-            if len(mots) == 2:
-                montant = int(mots[1])
-                nom_utilisateur = sender
-                response = jeu_des(nom_utilisateur, montant)
-                irc.send(f"PRIVMSG {channel} :{response}\n".encode())
-            else:
-                irc.send(f"PRIVMSG {channel} :Commande invalide. Utilisation : !des [mise]\n".encode())
 
+        elif msg.startswith("!quit"):
+            if sender in administrateurs:
+                    print("l'utilisateur est admin")
+                    print("nom_utilisateur = " + str(sender))
+                    irc.send(f"NOTICE {sender} :L'utilisateur est admin\n".encode())
+                    irc.send(f"NOTICE {sender} :nom_utilisateur = {sender}\n".encode())
+                    irc.send(f"NOTICE {sender} :Quitting IRC.\n".encode())  
+                    """
+                    reason = ""
+                    if reason is None:  
+                        irc.send("QUIT Maintenance Technique\n".encode())
+                    else:
+                        irc.send("QUIT {reason}\n".encode())
+                    """
+                    irc.send("QUIT Maintenance Technique bot casino beta-0.01 by Max\n".encode())
+                    # Define the process ID of the target process
+                    pid = open("bot.pid", "r+")
+                    #print("Output of Read function is ")
+                    # print(pid.read())
+                    # print()
+                    #os.kill(pid, signal.SIGTERM)
+                    # Send a SIGTERM signal to the process
+                    """
+                    try:
+                        os.kill(pid, signal.SIGTERM)
+                        print(f"Sent SIGTERM signal to process {pid}")
+                        irc.send(f"NOTICE {sender} :Sent SIGTERM signal to process {pid}.\n".encode())
+                    except OSError:
+                        print(f"Failed to send SIGTERM signal to process {pid}")
+                        irc.send(f"NOTICE {sender} :Failed to send SIGTERM signal to process {pid}.\n".encode())
+                    #irc.send(f"QUIT:\n".encode())
+                    """     
+            else:
+                print("Vous n'avez pas accsès à cette commande")
+                        
+ 
 # Fermeture de la connexion
 irc.close()
