@@ -1,4 +1,5 @@
 import os
+import irc
 import socket
 import re
 import mariadb
@@ -426,26 +427,37 @@ port = 6667
 channel = "#casino"
 bot_name = "CasinoBot"
 
-# Connexion au serveur IRC
+# Création de la socket pour la connexion IRC
 irc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 irc.connect((server, port))
-irc.send(f"USER {bot_name} {bot_name} {bot_name} :{bot_name} version 0.01\n".encode())
+irc.send(f"USER {bot_name} {bot_name} {bot_name} :IRC Bot\n".encode())
 irc.send(f"NICK {bot_name}\n".encode())
 irc.send(f"JOIN {channel}\n".encode())
-irc.send("JOIN #logs\n".encode())  # Assurez-vous de rejoindre le salon #logs
+irc.send("JOIN #logs\n".encode())  # S'assurer de rejoindre le salon #logs
+
 
 def log_commande(message):
     irc.send(f"PRIVMSG #logs :{message}\n".encode())
 
 
+# Boucle principale pour traiter les messages
 while True:
     message = irc.recv(2048).decode("UTF-8")
-    print(message)  # Affiche le message à la console pour débogage
+    print(message)  # Afficher le message pour le débogage
 
+    # Répondre aux PINGs du serveur pour garder la connexion active
     if "PING" in message:
+        # Extraction du 'cookie' (token PING) du message
         cookie = message.split()[1]
         irc.send(f"PONG {cookie}\n".encode())
         log_commande(f"PING/PONG maintenu avec {cookie}")
+
+    # Gérer le message d'erreur spécifique pour le salon #logs
+    if "404" in message and "#logs" in message:
+        print("Erreur : Le bot ne peut pas poster dans #logs en raison de restrictions.")
+        irc.send(f"JOIN #logs\n".encode())  # Essayer de rejoindre à nouveau si non présent
+        # Envisager d'envoyer un message à un administrateur ici
+        continue
 
     elif "PRIVMSG" in message:
         sender_match = re.match(r"^:(.*?)!", message)
