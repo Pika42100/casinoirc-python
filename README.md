@@ -1,5 +1,5 @@
 # casinoIRC-python beta
-jeux de casino en python pour irc beta
+jeux de casino en python pour irc
 
 dans cette version je suis reparti de zéro pour modifier la connexion irc du bot Le bot ce connect maintenant en socket ;)
 
