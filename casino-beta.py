@@ -4,8 +4,6 @@
 #                                                                  #
 #  casino bot en python                                            #
 ####################################################################
-
-
 import os
 import irc
 import socket
