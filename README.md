@@ -3,6 +3,16 @@ jeux de casino en python pour irc
 
 dans cette version je suis reparti de zéro pour modifier la connexion irc du bot Le bot ce connect maintenant en socket ;)
 
+
+
+
+
+
+
+
+
+
+
 commandes disponibles (administrateur)
 !register [nom_utilisateur] : Créer un compte.
 
@@ -32,6 +42,18 @@ commandes disponibles (administrateur)
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 Commandes disponibles les Joueur :
 
 !register [nom_utilisateur] : Créer un compte.
@@ -47,6 +69,17 @@ Commandes disponibles les Joueur :
 !slots [montant] : joue au machine a sous.
 
 !des [montant] : joue au jeux de dès.
+
+
+
+
+
+
+
+
+
+
+
 
 
 MISE A JOUR: 1.1
