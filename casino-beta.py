@@ -33,10 +33,10 @@ with open('bot.pid', 'w', encoding='utf-8') as f:
     f.write(str(os.getpid()))
 
 # Configuration de la base de données
-db_host = "localhost"
-db_user = "nom-d'utulisateur-database"
-db_password = "mot-de-pass-database"
-db_name = "nom-de-la-database"
+db_host = "localhost" 
+db_user = "user-database" # a ramplacer
+db_password = "pass-database" # a ramplacer
+db_name = "name-database" # a ramplacer
 
 # Connexion à la base de données
 try:
@@ -98,6 +98,27 @@ def get_solde_banque(nom_utilisateur):
         print(f"Erreur lors de la récupération du solde en banque: {e}")
         return None
 
+# Fonction pour gérer les commandes des jeux avec le timer de 30 secondes
+def gestion_commande_jeu(nom_utilisateur, commande):
+    if peut_jouer(nom_utilisateur):  # Vérifie si l'utilisateur peut jouer
+        if mettre_a_jour_dernier_credit(nom_utilisateur):  # Met à jour le dernier crédit si l'utilisateur peut jouer
+            # Gérer les commandes des jeux ici...
+            return f"{Fore.GREEN}Vous pouvez jouer maintenant !{Fore.END}"  # Exemple de réponse lorsque l'utilisateur peut jouer
+        else:
+            return f"{Fore.RED}Une erreur est survenue lors de la mise à jour du dernier crédit.{Fore.END}"
+    else:
+        return f"{Fore.RED}Vous devez attendre 30 secondes entre chaque jeu.{Fore.END}"
+
+
+# Fonction pour vérifier si l'utilisateur peut jouer (30 sec entre chaque jeu)
+def peut_jouer(nom_utilisateur):
+    dernier_credit = get_dernier_credit(nom_utilisateur)
+    if dernier_credit is None:
+        return True  # Si aucun crédit n'a été enregistré, l'utilisateur peut jouer
+    else:
+        # Si le dernier crédit est antérieur à il y a 30 secondes ou plus, l'utilisateur peut jouer
+        return datetime.now() - dernier_credit >= timedelta(seconds=30)
+
 def gestion_commande(nom_utilisateur, commande):
     mots = commande.split()
     if mots[0] == "!deposer":
@@ -128,6 +149,7 @@ def gestion_commande(nom_utilisateur, commande):
             return transfert_credit(nom_utilisateur, montant)
         else:
             return f"{Fore.RED}Commande invalide. Utilisation : !transfert [montant]"
+
     elif mots[0] == "!convertir":
         if len(mots) == 2:
             montant = int(mots[1])
@@ -150,6 +172,7 @@ def gestion_commande(nom_utilisateur, commande):
                 return f"{Fore.RED}Le montant doit être supérieur à zéro."
         else:
             return f"{Fore.RED}Commande invalide. Utilisation : !convertir [montant]"
+
     elif commande.startswith("!solde_banque"):
         solde_banque = get_solde_banque(nom_utilisateur)
         if solde_banque is not None:
@@ -401,7 +424,7 @@ def envoyer_aide(nom_utilisateur):
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !convertir [montant] converti vos credit de jeux et les met en banque.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !transfert [montant] : transfert des crédits de votre compte en banque vers votre compte de jeux.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !roulette [nombre] : jouer au jeux de la roulette.\n".encode())
-        irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !casino [jeu] [montant] : joue au jeu du casino (ex: !casino 50).\n".encode())
+        irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !casino [montant] : joue au jeu du casino (ex: !casino 50).\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !slots [montant] : joue au machine a sous.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !quit : Déconnecter le bot.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !join [#channel] : fait joindre le bot sur un channel.\n".encode())
@@ -412,7 +435,7 @@ def envoyer_aide(nom_utilisateur):
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !register [nom_utilisateur] : Créer un compte.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !solde [nom_utilisateur] : Voir le solde du compte.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !convertir [montant] converti vos credit de jeux et les met en banque.\n".encode())
-        irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !casino [jeu] [montant] : joue au jeu du casino (ex: !casino 50).\n".encode())
+        irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !casino [montant] : joue au jeu du casino (ex: !casino 50).\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !roulette [nombre] : jouer au jeux de la roulette.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !slots [montant] : joue au machine a sous.\n".encode())
 
@@ -430,8 +453,11 @@ def supprimer_compte(administrateur):
 # Configuration IRC
 server = "irc.extra-cool.fr"
 port = 6667
-channel = "#casino"
+channel = "#extra-cool"
 bot_name = "CasinoBot"
+
+# Variable pour activer ou désactiver le mode débogage
+debug_mode = False  # Mettez à True pour activer le logging de débogage
 
 # Création de la socket pour la connexion IRC
 irc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -440,7 +466,7 @@ irc.send(f"USER {bot_name} {bot_name} {bot_name} :IRC Bot\n".encode())
 irc.send(f"NICK {bot_name}\n".encode())
 irc.send(f"JOIN {channel}\n".encode())
 irc.send("JOIN #logs\n".encode())  # S'assurer de rejoindre le salon #logs
-
+irc.send("JOIN #casino\n".encode())
 
 def log_commande(message):
     irc.send(f"PRIVMSG #logs :{message}\n".encode())
@@ -462,6 +488,7 @@ while True:
     if "404" in message and "#logs" in message:
         print("Erreur : Le bot ne peut pas poster dans #logs en raison de restrictions.")
         irc.send(f"JOIN #logs\n".encode())  # Essayer de rejoindre à nouveau si non présent
+        irc.send("JOIN #casino\n".encode())
         # Envisager d'envoyer un message à un administrateur ici
         continue
 
@@ -477,6 +504,11 @@ while True:
 
             # Log toutes les commandes reçues
             log_commande(f"Commande reçue de {sender} sur {channel}: {msg}")
+
+            # Gestion de la commande !aide
+            if msg.startswith("!aide"):
+                envoyer_aide(sender)  # Appel de la fonction pour envoyer les messages d'aide
+                log_commande(f"Commande d'aide demandée par {sender}")
 
             if msg.startswith("!register"):
                 mots = msg.split()
@@ -527,6 +559,15 @@ while True:
                 else:
                     irc.send(f"PRIVMSG {channel} :Commande invalide. Utilisation : !roulette [montant]\n".encode())
 
+            elif msg.startswith("!slots"):
+                mots = msg.split()
+                if len(mots) == 2:
+                    montant_mise = int(mots[1])
+                    response = jeu_slots(sender, montant_mise)
+                    irc.send(f"PRIVMSG {channel} :{response}\n".encode())
+                else:
+                    irc.send(f"PRIVMSG {channel} :Commande invalide. Utilisation : !slots [montant]\n".encode())
+
             # Gestion des commandes administratives
             elif msg.startswith("!supprimer"):
                 if sender in administrateurs:
@@ -552,6 +593,16 @@ while True:
                 else:
                     irc.send(f"PRIVMSG {channel} :Commande invalide. Utilisation : !transfert [montant]\n".encode())
                     log_commande(f"Commande invalide !transfert par {sender}")
+
+            elif msg.startswith("!convertir"):
+                mots = msg.split()
+                if len(mots) == 2:
+                    montant = int(mots[1])
+                    response = gestion_commande(nom_utilisateur, msg)
+                    irc.send(f"PRIVMSG {channel} :{response}\n".encode())
+                else:
+                    irc.send(f"PRIVMSG {channel} :Commande invalide. Utilisation : !convertir [montant]\n".encode())
+
 
             elif msg.startswith("!casino"):
                 mots = msg.split()
