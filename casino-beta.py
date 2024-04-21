@@ -98,27 +98,6 @@ def get_solde_banque(nom_utilisateur):
         print(f"Erreur lors de la récupération du solde en banque: {e}")
         return None
 
-# Fonction pour gérer les commandes des jeux avec le timer de 30 secondes
-def gestion_commande_jeu(nom_utilisateur, commande):
-    if peut_jouer(nom_utilisateur):  # Vérifie si l'utilisateur peut jouer
-        if mettre_a_jour_dernier_credit(nom_utilisateur):  # Met à jour le dernier crédit si l'utilisateur peut jouer
-            # Gérer les commandes des jeux ici...
-            return f"{Fore.GREEN}Vous pouvez jouer maintenant !{Fore.END}"  # Exemple de réponse lorsque l'utilisateur peut jouer
-        else:
-            return f"{Fore.RED}Une erreur est survenue lors de la mise à jour du dernier crédit.{Fore.END}"
-    else:
-        return f"{Fore.RED}Vous devez attendre 30 secondes entre chaque jeu.{Fore.END}"
-
-
-# Fonction pour vérifier si l'utilisateur peut jouer (30 sec entre chaque jeu)
-def peut_jouer(nom_utilisateur):
-    dernier_credit = get_dernier_credit(nom_utilisateur)
-    if dernier_credit is None:
-        return True  # Si aucun crédit n'a été enregistré, l'utilisateur peut jouer
-    else:
-        # Si le dernier crédit est antérieur à il y a 30 secondes ou plus, l'utilisateur peut jouer
-        return datetime.now() - dernier_credit >= timedelta(seconds=30)
-
 def gestion_commande(nom_utilisateur, commande):
     mots = commande.split()
     if mots[0] == "!deposer":
@@ -149,7 +128,6 @@ def gestion_commande(nom_utilisateur, commande):
             return transfert_credit(nom_utilisateur, montant)
         else:
             return f"{Fore.RED}Commande invalide. Utilisation : !transfert [montant]"
-
     elif mots[0] == "!convertir":
         if len(mots) == 2:
             montant = int(mots[1])
@@ -172,7 +150,6 @@ def gestion_commande(nom_utilisateur, commande):
                 return f"{Fore.RED}Le montant doit être supérieur à zéro."
         else:
             return f"{Fore.RED}Commande invalide. Utilisation : !convertir [montant]"
-
     elif commande.startswith("!solde_banque"):
         solde_banque = get_solde_banque(nom_utilisateur)
         if solde_banque is not None:
@@ -185,6 +162,36 @@ def gestion_commande(nom_utilisateur, commande):
             return f"{Fore.BLUE}Solde en jeux : {solde_jeux}"
         else:
             return f"{Fore.RED}Utilisateur non trouvé veuiller dabors vous enregistre avec la commande !register."
+    if commande.startswith("!solde_banque"):
+        solde_banque = get_solde_banque(nom_utilisateur)
+        if solde_banque is not None:
+            return f"Solde en banque : {solde_banque}"
+        else:
+            return "Utilisateur non trouvé veuiller dabors vous enregistre avec la commande !register."
+    mots = commande.split()
+    if mots[0] == "!deposer":
+        if len(mots) == 2:
+            montant = int(mots[1])
+            if montant > 0:
+                solde_banque = get_solde_banque(nom_utilisateur)
+                if solde_banque is not None:
+                    nouveau_solde_banque = solde_banque + montant
+                    if mettre_a_jour_solde_banque(nom_utilisateur, nouveau_solde_banque):
+                        return f"Vous avez déposé {montant} crédits dans votre compte en banque. Nouveau solde en banque : {nouveau_solde_banque}"
+                    else:
+                        return "Une erreur est survenue lors du dépôt."
+                else:
+                    return "Utilisateur non trouvé veuiller dabors vous enregistre avec la commande !register."
+            else:
+                return "Le montant doit être supérieur à zéro."
+        else:
+            return "Commande invalide. Utilisation : !deposer [montant]"
+    elif commande.startswith("!solde_banque"):
+        solde_banque = get_solde_banque(nom_utilisateur)
+        if solde_banque is not None:
+            return f"Solde en banque : {solde_banque}"
+        else:
+            return "Utilisateur non trouvé veuiller dabors vous enregistre avec la commande !register."
 
     if not est_enregistre(nom_utilisateur):  # Vérifier si le joueur est enregistré
         return f"{Fore.RED}Vous devez d'abord vous enregistrer avec !register pour jouer.{Fore.END}"
@@ -457,7 +464,7 @@ channel = "#extra-cool"
 bot_name = "CasinoBot"
 
 # Variable pour activer ou désactiver le mode débogage
-debug_mode = False  # Mettez à True pour activer le logging de débogage
+debug_mode = True  # Mettez à True pour activer le logging de débogage
 
 # Création de la socket pour la connexion IRC
 irc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -583,50 +590,36 @@ while True:
                 else:
                     irc.send(f"PRIVMSG {channel} :Vous n'êtes pas autorisé à exécuter cette commande.\n".encode())
 
-            elif msg.startswith("!transfert"):
+            if msg.startswith("!transfert"):
                 mots = msg.split()
                 if len(mots) == 2:
                     montant = int(mots[1])
                     response = gestion_commande(sender, msg)
                     irc.send(f"PRIVMSG {channel} :{response}\n".encode())
-                    log_commande(f"Transfert de {montant} crédits effectué par {sender}")
                 else:
                     irc.send(f"PRIVMSG {channel} :Commande invalide. Utilisation : !transfert [montant]\n".encode())
-                    log_commande(f"Commande invalide !transfert par {sender}")
-
-            elif msg.startswith("!convertir"):
+            if msg.startswith("!solde_banque"):
+                response = gestion_commande(sender, msg)
+                irc.send(f"PRIVMSG {channel} :{response}\n".encode())
+            if msg.startswith("!deposer") or msg.startswith("!solde_banque"):
+                response = gestion_commande(sender, msg)
+                irc.send(f"PRIVMSG {channel} :{response}\n".encode())
+                # Dans la boucle principale
+            if msg.startswith("!deposer") or msg.startswith("!convertir") or msg.startswith("!banque") or msg.startswith("!solde_jeux"):
+                response = gestion_commande(sender, msg)
+                irc.send(f"PRIVMSG {channel} :{response}\n".encode())
+            elif msg.startswith("!aide"):
+                envoyer_aide(sender)
+                    # Intégration de la commande pour jouer au Juste Prix
+            elif msg.startswith("!juste_prix"):
                 mots = msg.split()
                 if len(mots) == 2:
-                    montant = int(mots[1])
-                    response = gestion_commande(nom_utilisateur, msg)
-                    irc.send(f"PRIVMSG {channel} :{response}\n".encode())
-                else:
-                    irc.send(f"PRIVMSG {channel} :Commande invalide. Utilisation : !convertir [montant]\n".encode())
-
-
-            elif msg.startswith("!casino"):
-                mots = msg.split()
-                if len(mots) >= 2:
+                    montant_mise = int(mots[1])
                     nom_utilisateur = sender
-                    commande = msg
-                    response = gestion_commande_casino(nom_utilisateur, commande)
+                    response = jeu_juste_prix(nom_utilisateur, montant_mise)
                     irc.send(f"PRIVMSG {channel} :{response}\n".encode())
-                    log_commande(f"Casino commandé par {sender} avec la mise {mots[1]}")
                 else:
-                    irc.send(f"PRIVMSG {channel} :Commande invalide. Utilisation : !casino [montant]\n".encode())
-                    log_commande(f"Commande invalide !casino par {sender}")
-
-            elif msg.startswith("!roulette"):
-                mots = msg.split()
-                if len(mots) >= 2:
-                    nom_utilisateur = sender
-                    commande = msg
-                    response = gestion_commande_roulette(nom_utilisateur, commande)
-                    irc.send(f"PRIVMSG {channel} :{response}\n".encode())
-                    log_commande(f"Roulette jouée par {sender} avec mise de {mots[1]}")
-                else:
-                    irc.send(f"PRIVMSG {channel} :Commande invalide. Utilisation : !roulette [montant]\n".encode())
-                    log_commande(f"Commande invalide !roulette par {sender}")
+                    irc.send(f"PRIVMSG {channel} :Commande invalide. Utilisation : !juste_prix [montant_mise]\n".encode())
 
             elif msg.startswith("!join"):
                 if sender in administrateurs:
