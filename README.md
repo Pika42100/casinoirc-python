@@ -27,6 +27,10 @@ commandes disponibles (administrateur)
 !part [#channel] : fait Partire le bot d'un channel.
 
 !supprime [nom_utilisateur] : Supprimer un compte.
+!ajouterargent [nom_utilisateur] [montant] : credite de l'agennt sur le compte d'un joueur
+
+
+
 
 Commandes disponibles les Joueur :
 
@@ -44,4 +48,12 @@ Commandes disponibles les Joueur :
 
 !des [montant] : joue au jeux de dès.
 
+
+MISE A JOUR: 1.1
+
+ajout d'un salon #logs ou son stocker toutes les commande fait par les joueur 
+
+ajout d'un timer de 30sec entre chaque jeux pour eviter le spamm salon 
+
+ajout d'une commande admin pour ajouter de l'argent a un joueur ( !ajouterargent [nom_utilisateur] [montant] )
 
