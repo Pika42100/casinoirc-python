@@ -33,8 +33,11 @@ dans cette version je suis reparti de zéro pour modifier la connexion irc du bo
 
 !ajouterargent [nom_utilisateur] [montant] : credite de l'agennt sur le compte d'un joueur
 
+!restart: pour restart le bot
 
+!addadmin: ajoute un admin au bot
 
+!deladmin: supprime un admin au bot
 
 
 
@@ -54,14 +57,11 @@ dans cette version je suis reparti de zéro pour modifier la connexion irc du bo
 
 !des [montant] : joue au jeux de dès.
 
+!demande (#salon): demande au bot de fair rejoindre votre salon
 
+!listadmin: dit la list des admin dispo
 
-
-
-
-
-
-
+!version: regarde la version actuel du bot
 
 
 
