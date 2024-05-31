@@ -9,7 +9,7 @@
 #    ajout d'une identification au oret de nickserv                                        #
 #                                                                                          #
 #    ajoutle fet que le bot peux ce /oper (IRCOP) si c'est votre server                    #
-#                                                                                           #
+#                                                                                          #
 #    ajout de la commande !restart pour restart le bot                                     #
 #                                                                                          #
 #    ajout de la commande !demande #votre-salon pour fair rejoindre le bot sur votre salon #
