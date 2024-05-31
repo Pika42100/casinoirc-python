@@ -1,10 +1,31 @@
-####################################################################
-#     casino BOT- PAR Maxime                                       #
-#      Version 1.01                                                #
-#                                                                  #
-#  casino bot en python                                            #
-####################################################################
+############################################################################################
+#     casino BOT- PAR Maxime                                                               #
+#      Version 1.1                                                                         #
+#                                                                                          #                                                                                    #
+#    modification 31/05/2024:                                                              #
+#                                                                                          #
+#    ajout du ssl conexion securiser                                                       #
+#                                                                                          #
+#    ajout d'une identification au oret de nickserv                                        #
+#                                                                                          #
+#    ajoutle fet que le bot peux ce /oper (IRCOP) si c'est votre server                    #
+#                                                                                          #
+#    ajout de la commande !demande #votre-salon pour fair rejoindre le bot sur votre salon #
+#                                                                                          #
+#    ajout de la commande !addadmin pour ajouter des administrateur au bot                 #
+#                                                                                          #
+#    ajout d'un fichier admins.txt ou son stocker les admins                               #
+#                                                                                          #
+#    ajout de la commande !deladmin pour supprimer un administrateur au bot                #
+#                                                                                          #
+#    ajoute de la commande !listadmin pour voir la liste des administrateur disponible     #
+#                                                                                          #
+#  casino bot en python                                                                    #
+############################################################################################
+
+import sys
 import os
+import ssl
 import irc
 import socket
 import re
@@ -15,6 +36,10 @@ from datetime import datetime
 import random
 from colorama import Fore
 from dotenv import load_dotenv
+from datetime import datetime, timedelta
+
+# Définir la version du bot
+version_bot = "casino BOT- PAR Maxime Version 1.01"
 
 class Color:
     PURPLE = '\033[95m'
@@ -33,10 +58,10 @@ with open('bot.pid', 'w', encoding='utf-8') as f:
     f.write(str(os.getpid()))
 
 # Configuration de la base de données
-db_host = "localhost" 
-db_user = "user-database" # a ramplacer
-db_password = "pass-database" # a ramplacer
-db_name = "name-database" # a ramplacer
+db_host = "host-database"
+db_user = "user-database"
+db_password = "mot-de-pass-database"
+db_name = "nom-database"
 
 # Connexion à la base de données
 try:
@@ -179,6 +204,7 @@ def gestion_commande(nom_utilisateur, commande):
             return f"{Fore.RED}Article inconnu. Veuillez choisir parmi 'autovoice', 'halflop', 'operateur'.{Fore.RESET}"
     return "Commande invalide ou non reconnue."
 
+def gestion_commande(nom_utilisateur, commande):
     mots = commande.split()
     if mots[0] == "!deposer":
         if len(mots) == 2:
@@ -208,6 +234,7 @@ def gestion_commande(nom_utilisateur, commande):
             return transfert_credit(nom_utilisateur, montant)
         else:
             return f"{Fore.RED}Commande invalide. Utilisation : !transfert [montant]"
+
     elif mots[0] == "!convertir":
         if len(mots) == 2:
             montant = int(mots[1])
@@ -357,7 +384,7 @@ def gestion_commande_casino(nom_utilisateur, commande):
             else:
                 return f"{Fore.RED}Vous n'avez pas suffisamment de crédits de jeux pour jouer veuillez faire un transfert [!transfert montant].{Color.END}"
         else:
-            return f"{Fore.RED}Commande invalide. Utilisation : !casino [montant]{Fore.END}"
+            return f"{Fore.RED}Commande invalide. Utilisation : !casino [montant]{Fore.RESET}"
 
 
 def jeu_de_des(nom_utilisateur, montant_mise):
@@ -582,29 +609,164 @@ def supprimer_compte(administrateur):
         conn.rollback()
         return False
 
-# Configuration IRC
+# Configuration IRC changer les infos
 server = "irc.extra-cool.fr"
-port = 6667
+port = 6697  # Port TLS/SSL pour IRC
 channel = "#extra-cool"
-logs_channel = "#logs"  # Définissez ici la variable logs_channel
-casino_channel = "#casino"  # Définissez ici la variable casino_channel
+logs_channel = "#logs"
+casino_channel = "#casino"
 bot_name = "CasinoBot"
+bot_channels = set()
+irc_channels = ["#extra-cool", "#casino", "#casinoadmin"]
+nickname = "CasinoBot"
+password = "votre-mot-de-pass"
+nickserv_password = "votre-mot(de-pass"
+ircop_password = "votre-mot(de-pass"  # Ajoutez votre mot de passe IRCop ici
+admins_file = "admins.txt"
+
+
+# Lire les administrateurs depuis un fichier
+def lire_admins():
+    if not os.path.exists(admins_file):
+        return set()
+    with open(admins_file, "r") as f:
+        return set(line.strip() for line in f)
+
+
+# Lire les administrateurs depuis un fichier
+def lire_admins():
+    if not os.path.exists(admins_file):
+        return set()
+    with open(admins_file, "r") as f:
+        return set(line.strip() for line in f)
+
+admin_users = lire_admins()
+print("Admins initiaux : ", admin_users)  # Debugging output
+
+# Enregistrer les administrateurs dans un fichier
+def enregistrer_admins():
+    with open(admins_file, "w") as f:
+        for admin in admin_users:
+            f.write(f"{admin}\n")
+    print("Admins enregistrés : ", admin_users)  # Debugging output
 
 # Variable pour activer ou désactiver le mode débogage
-debug_mode = True  # Mettez à True pour activer le logging de débogage
+debug_mode = True
+
+# Fonction pour logger les commandes
+def log_commande(message):
+    irc.send(f"PRIVMSG {logs_channel} :{message}\n".encode())
+
+# Fonction pour se connecter et s'identifier
+def identify_and_oper():
+    # Identifier auprès de NickServ
+    irc.send(f"PRIVMSG NickServ :IDENTIFY {nickserv_password}\n".encode())
+    log_commande("[info]==> Identification auprès de NickServ envoyée.")
+    time.sleep(5)  # Attendre un peu pour s'assurer que l'identification est traitée
+
+    # Obtenir les privilèges d'opérateur (IRCop)
+    irc.send(f"OPER {nickname} {ircop_password}\n".encode())
+    log_commande("[info]==> Commande OPER envoyée pour obtenir les privilèges IRCop.")
+    time.sleep(5)  # Attendre un peu pour s'assurer que la commande est traitée
+
+    # Obtenir les privilèges d'opérateur de canal
+    irc.send(f"PRIVMSG ChanServ :OP {nickname}\n".encode())
+    log_commande("[info]==> Commande OP envoyée à ChanServ.")
+
+# Fonction pour traiter la demande et envoyer un message à #casinoadmin
+def traiter_demande(sender, channel_demande):
+    log_message = f"[info]==> {sender} a fait une demande aux admins pour rejoindre le salon {channel_demande}"
+    print(log_message)  # Afficher pour le débogage
+    irc.send(f"PRIVMSG #casinoadmin :{log_message}\n".encode())
+    response = irc.recv(2048).decode("UTF-8")
+    print(response)  # Afficher la réponse du serveur pour le débogage
+    log_commande(log_message)
+    
+    # Faire rejoindre le salon demandé
+    irc.send(f"JOIN {channel_demande}\n".encode())
+    bot_channels.add(channel_demande)
+    log_commande(f"[info]==> Bot a rejoint le salon {channel_demande}")
+
+# Fonction pour redémarrer le bot
+def restart_bot():
+    log_commande("[info]==> Redémarrage du bot...")
+    python = sys.executable
+    os.execl(python, python, *sys.argv)
+
+# Fonction pour ajouter un administrateur
+def ajouter_admin(nouveau_admin, sender):
+    if sender not in admin_users:
+        irc.send(f"PRIVMSG {sender} :Vous n'avez pas les droits pour ajouter un administrateur.\n".encode())
+        log_commande(f"Ajout d'administrateur refusé pour {sender}")
+        return
+    if nouveau_admin in admin_users:
+        irc.send(f"PRIVMSG {sender} :{nouveau_admin} est déjà un administrateur.\n".encode())
+        log_commande(f"Ajout d'administrateur échoué: {nouveau_admin} est déjà administrateur")
+        return
+    admin_users.add(nouveau_admin)
+    enregistrer_admins()  # Enregistrer les administrateurs après ajout
+    irc.send(f"PRIVMSG {sender} :{nouveau_admin} a été ajouté comme administrateur.\n".encode())
+    log_commande(f"{nouveau_admin} ajouté comme administrateur par {sender}")
+
+# Fonction pour supprimer un administrateur
+def supprimer_admin(admin_a_supprimer, sender):
+    if sender not in admin_users:
+        irc.send(f"PRIVMSG {sender} :Vous n'avez pas les droits pour supprimer un administrateur.\n".encode())
+        log_commande(f"Suppression d'administrateur refusée pour {sender}")
+        return
+    if admin_a_supprimer not in admin_users:
+        irc.send(f"PRIVMSG {sender} :{admin_a_supprimer} n'est pas un administrateur.\n".encode())
+        log_commande(f"Suppression d'administrateur échouée: {admin_a_supprimer} n'est pas administrateur")
+        return
+    admin_users.remove(admin_a_supprimer)
+    enregistrer_admins()  # Enregistrer les administrateurs après suppression
+    irc.send(f"PRIVMSG {sender} :{admin_a_supprimer} a été supprimé des administrateurs.\n".encode())
+    log_commande(f"{admin_a_supprimer} supprimé des administrateurs par {sender}")
+
+
+# Fonction pour envoyer la liste des administrateurs
+def lister_admins(sender, channel):
+    admins_list = ", ".join(admin_users)
+    irc.send(f"PRIVMSG {channel} :Administrateurs actuels : {admins_list}\n".encode())
+    log_commande(f"Liste des administrateurs demandée par {sender}: {admins_list}")
+
 
 # Création de la socket pour la connexion IRC
-irc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-irc.connect((server, port))
-irc.send(f"USER {bot_name} {bot_name} {bot_name} :IRC Bot\n".encode())
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.connect((server, port))
+
+# Envelopper la socket dans une couche SSL/TLS
+irc = ssl.wrap_socket(sock)
+
+irc.send(f"USER {bot_name} 0 * :{bot_name}\n".encode())
 irc.send(f"NICK {bot_name}\n".encode())
+
+registered = False
+
+while not registered:
+    message = irc.recv(2048).decode("UTF-8")
+    print(message)  # Afficher le message pour le débogage
+
+    # Répondre aux PINGs du serveur pour garder la connexion active
+    if "PING" in message:
+        cookie = message.split()[1]
+        irc.send(f"PONG {cookie}\n".encode())
+    
+    # Vérifier si le bot est enregistré
+    if "001" in message:
+        registered = True
+
+# S'identifier auprès de NickServ et obtenir les privilèges d'opérateur
+identify_and_oper()
+
+# Rejoindre les salons définis
 irc.send(f"JOIN {channel}\n".encode())
-irc.send("JOIN #logs\n".encode())  # S'assurer de rejoindre le salon #logs
-irc.send("JOIN #casino\n".encode())
+irc.send(f"JOIN {logs_channel}\n".encode())
+irc.send(f"JOIN {casino_channel}\n".encode())
 
-def log_commande(message):
-    irc.send(f"PRIVMSG #logs :{message}\n".encode())
-
+for channel in irc_channels:
+    irc.send(f"JOIN {channel}\n".encode())
+    bot_channels.add(channel)
 
 # Boucle principale pour traiter les messages
 while True:
@@ -613,18 +775,39 @@ while True:
 
     # Répondre aux PINGs du serveur pour garder la connexion active
     if "PING" in message:
-        # Extraction du 'cookie' (token PING) du message
         cookie = message.split()[1]
         irc.send(f"PONG {cookie}\n".encode())
         log_commande(f"PING/PONG maintenu avec {cookie}")
 
     # Gérer le message d'erreur spécifique pour le salon #logs
-    if "404" in message and "#logs" in message:
-        print("Erreur : Le bot ne peut pas poster dans #logs en raison de restrictions.")
-        irc.send(f"JOIN #logs\n".encode())  # Essayer de rejoindre à nouveau si non présent
-        irc.send("JOIN #casino\n".encode())
-        # Envisager d'envoyer un message à un administrateur ici
+    if "404" in message and logs_channel in message:
+        print(f"[info]==>Erreur : Le bot ne peut pas poster dans {logs_channel} en raison de restrictions.")
+        irc.send(f"JOIN {logs_channel}\n".encode())  # Essayer de rejoindre à nouveau si non présent
+        irc.send(f"JOIN {casino_channel}\n".encode())
+        irc.send("JOIN #casinoadmin\n".encode())
         continue
+
+    # Détection des messages de type JOIN
+    if "JOIN" in message:
+        join_match = re.match(r"^:(.*?)!.*JOIN\s+:(#\S+)", message)
+        if join_match:
+            user = join_match.group(1)
+            channel = join_match.group(2)
+            log_message = f"[info]==>{user} a rejoint le salon {channel}"
+            print(log_message)  # Afficher pour le débogage
+            irc.send(f"PRIVMSG {logs_channel} :{log_message}\n".encode())
+            log_commande(log_message)
+
+    # Détection des messages de type PART
+    if "PART" in message:
+        part_match = re.match(r"^:(.*?)!.*PART\s+(#\S+)", message)
+        if part_match:
+            user = part_match.group(1)
+            channel = part_match.group(2)
+            log_message = f"[info]==>{user} a quitté le salon {channel}"
+            print(log_message)  # Afficher pour le débogage
+            irc.send(f"PRIVMSG {logs_channel} :{log_message}\n".encode())
+            log_commande(log_message)
 
     elif "PRIVMSG" in message:
         sender_match = re.match(r"^:(.*?)!", message)
@@ -637,12 +820,63 @@ while True:
             msg = msg_match.group(1).strip()
 
             # Log toutes les commandes reçues
-            log_commande(f"Commande reçue de {sender} sur {channel}: {msg}")
+            log_commande(f"[info]==> Commande reçue de {sender} sur {channel}: {msg}")
 
             # Gestion de la commande !aide
             if msg.startswith("!aide"):
                 envoyer_aide(sender)  # Appel de la fonction pour envoyer les messages d'aide
-                log_commande(f"Commande d'aide demandée par {sender}")
+                log_commande(f"[HELP]==>Commande d'aide demandée par {sender}")
+
+            # Gestion de la commande !demande
+            if msg.startswith("!demande"):
+                parts = msg.split()
+                if len(parts) > 1:
+                    channel_demande = parts[1]
+                    traiter_demande(sender, channel_demande)
+                else:
+                    irc.send(f"PRIVMSG {channel} :Syntaxe: !demande <nom_du_channel>\n".encode())
+
+            # Gestion de la commande !version
+            elif msg.startswith("!version"):  # Ajout de la commande !version
+                irc.send(f"PRIVMSG {channel} :Version actuelle du bot : {version_bot}\n".encode())
+                log_commande(f"[info]==> Version du bot demandée par {sender}: {version_bot}")
+
+            # Gestion de la commande !restart
+            elif msg.startswith("!restart") and sender in administrateurs:  # Vérification des privilèges
+                irc.send(f"PRIVMSG {channel} :Le bot va redémarrer...\n".encode())
+                log_commande(f"[info]==> Commande de redémarrage reçue de {sender}")
+                restart_bot()
+            elif msg.startswith("!restart"):
+                irc.send(f"PRIVMSG {channel} :Désolé {sender}, vous n'avez pas les droits pour redémarrer le bot.\n".encode())
+                log_commande(f"[ERREUR]==>Commande de redémarrage refusée pour {sender}")
+
+
+            # Gestion de la commande !addadmin
+            elif msg.startswith("!addadmin") and sender in administrateurs:  # Vérification des privilèges
+                parts = msg.split()
+                if len(parts) > 1:
+                    nouveau_admin = parts[1]
+                    ajouter_admin(nouveau_admin, sender)
+                else:
+                    irc.send(f"PRIVMSG {channel} :Syntaxe: !addadmin <nick>\n".encode())
+                    log_commande(f"Commande !addadmin incorrecte par {sender}")
+            elif msg.startswith("!addadmin"):
+                irc.send(f"PRIVMSG {channel} :Désolé {sender}, vous n'avez pas les droits pour ajouter un administrateur.\n".encode())
+                log_commande(f"Commande !addadmin refusée pour {sender}")
+
+
+            # Détection de la commande !deladmin
+            elif msg.startswith("!deladmin"):
+                parts = msg.split()
+                if len(parts) > 1:
+                    admin_a_supprimer = parts[1]
+                    supprimer_admin(admin_a_supprimer, sender)
+                else:
+                    irc.send(f"PRIVMSG {channel} :Syntaxe: !deladmin <nick>\n".encode())
+                    log_commande(f"Commande !deladmin incorrecte par {sender}")
+
+            elif msg.startswith("!listadmin"):
+                lister_admins(sender, channel)
 
             if msg.startswith("!register"):
                 mots = msg.split()
@@ -650,13 +884,13 @@ while True:
                     nom_utilisateur = mots[1]
                     if creer_compte(nom_utilisateur):
                         irc.send(f"PRIVMSG {channel} :Compte {nom_utilisateur} créé avec succès.\n".encode())
-                        log_commande(f"Compte {nom_utilisateur} créé avec succès par {sender}")
+                        log_commande(f"[info]==> Compte {nom_utilisateur} créé avec succès par {sender}")
                     else:
                         irc.send(f"PRIVMSG {channel} :Erreur lors de la création du compte.\n".encode())
-                        log_commande(f"Erreur lors de la création du compte pour {nom_utilisateur} par {sender}")
+                        log_commande(f"[ERREUR]==> Erreur lors de la création du compte pour {nom_utilisateur} par {sender}")
                 else:
                     irc.send(f"PRIVMSG {channel} :Commande invalide. Utilisation : !register [nom_utilisateur]\n".encode())
-                    log_commande(f"Tentative de création de compte avec commande invalide par {sender}")
+                    log_commande(f"[ERREUR]==> Tentative de création de compte avec commande invalide par {sender}")
 
             elif msg.startswith("!solde"):
                 mots = msg.split()
@@ -666,13 +900,13 @@ while True:
                     if solde:
                         solde_banque, solde_jeux = solde
                         irc.send(f"PRIVMSG {channel} :Solde en banque : {solde_banque}, Solde en jeux : {solde_jeux}\n".encode())
-                        log_commande(f"Solde vérifié pour {nom_utilisateur} par {sender}")
+                        log_commande(f"[info]==> Solde vérifié pour {nom_utilisateur} par {sender}")
                     else:
                         irc.send(f"PRIVMSG {channel} :Utilisateur non trouvé veuiller d'abord vous enregistrer avec la commande !register.\n".encode())
-                        log_commande(f"Utilisateur non trouvé pour vérification de solde par {sender}")
+                        log_commande(f"[ERREUR]==> Utilisateur non trouvé pour vérification de solde par {sender}")
                 else:
                     irc.send(f"PRIVMSG {channel} :Commande invalide. Utilisation : !solde [nom_utilisateur]\n".encode())
-                    log_commande(f"Commande invalide pour solde effectuée par {sender}")
+                    log_commande(f"[ERREUR]==> Commande invalide pour solde effectuée par {sender}")
 
             elif msg.startswith("!casino"):
                 mots = msg.split()
@@ -784,13 +1018,13 @@ while True:
                         channel_to_join = mots[1]
                         irc.send(f"JOIN {channel_to_join}\n".encode())
                         irc.send(f"PRIVMSG {channel} :je rejoint {channel_to_join} le salon.\n".encode())
-                        log_commande(f"{sender} a fait rejoindre le bot au salon {channel_to_join}")
+                        log_commande(f"[info]==> {sender} a fait rejoindre le bot au salon {channel_to_join}")
                     else:
                         irc.send(f"PRIVMSG {sender} :Commande invalide. Utilisation : !join [nom_du_salon]\n".encode())
-                        log_commande(f"Commande invalide !join par {sender}")
+                        log_commande(f"[ERREUR]==> Commande invalide !join par {sender}")
                 else:
                     irc.send(f"PRIVMSG {sender} :Vous n'êtes pas autorisé à utiliser cette commande.\n".encode())
-                    log_commande(f"Tentative d'accès non autorisée à la commande !join par {sender}")
+                    log_commande(f"[ERREUR]==> Tentative d'accès non autorisée à la commande !join par {sender}")
 
             elif msg.startswith("!part"):
                 if sender in administrateurs:
@@ -799,23 +1033,23 @@ while True:
                         channel_to_leave = mots[1]
                         irc.send(f"PART {channel_to_leave}\n".encode())
                         irc.send(f"PRIVMSG {channel} :ok je quitte le salon {channel_to_leave} ah bientôt.\n".encode())
-                        log_commande(f"{sender} a fait quitter le bot du salon {channel_to_leave}")
+                        log_commande(f"[info]==> {sender} a fait quitter le bot du salon {channel_to_leave}")
                     else:
                         irc.send(f"PRIVMSG {sender} :Commande invalide. Utilisation : !part [nom_du_salon]\n".encode())
-                        log_commande(f"Commande invalide !part par {sender}")
+                        log_commande(f"[ERREUR]==> Commande invalide !part par {sender}")
                 else:
                     irc.send(f"PRIVMSG {sender} :Vous n'êtes pas autorisé à utiliser cette commande.\n".encode())
-                    log_commande(f"Tentative d'accès non autorisée à la commande !part par {sender}")
+                    log_commande(f"[ERREUR]==> Tentative d'accès non autorisée à la commande !part par {sender}")
 
             elif msg.startswith("!quit"):
                 if sender in administrateurs:
                     irc.send("QUIT Maintenance Technique bot casino beta-0.01 by Max\n".encode())
                     pid = open("bot.pid", "r").read().strip()
                     os.kill(int(pid), signal.SIGTERM)
-                    log_commande(f"Bot quitte sur commande par {sender}")
+                    log_commande(f"[ADMIN]==> Bot quitte sur commande par {sender}")
                 else:
                     irc.send(f"PRIVMSG {sender} :Vous n'êtes pas autorisé à utiliser cette commande.\n".encode())
-                    log_commande(f"Tentative d'accès non autorisée à la commande !quit par {sender}")
+                    log_commande(f"[ERREUR]==> Tentative d'accès non autorisée à la commande !quit par {sender}")
 
 # Fermeture de la connexion
 irc.close()
