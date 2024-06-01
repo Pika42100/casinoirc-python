@@ -29,7 +29,7 @@ dans cette version je suis reparti de zéro pour modifier la connexion irc du bo
 
 !part [#channel] : fait Partire le bot d'un channel.
 
-!supprime [nom_utilisateur] : Supprimer un compte.
+!supprimer [nom_utilisateur] : Supprimer un compte.
 
 !ajouterargent [nom_utilisateur] [montant] : credite de l'agennt sur le compte d'un joueur
 
