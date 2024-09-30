@@ -1,6 +1,6 @@
 ############################################################################################
 #     casino BOT- PAR Maxime                                                               #
-#      Version 1.1                                                                         #
+#      Version 1.1                                                                        #
 #                                                                                          #                                                                                    #
 #    modification 31/05/2024:                                                              #
 #                                                                                          #
@@ -22,6 +22,14 @@
 #                                                                                          #
 #    ajoute de la commande !listadmin pour voir la liste des administrateur disponible     #
 #                                                                                          #
+#    version 1.2                                                                           #
+#                                                                                          #
+#    modification 30/09/2024:                                                              #
+#                                                                                          #
+#    ajout d'une page html des stats joueur                                                #
+#                                                                                          #
+#    ajout d'une anonce sur un salon pour inviter les users a jouer sur #casino            #
+#                                                                                          #
 #  casino bot en python                                                                    #
 ############################################################################################
 
@@ -39,9 +47,10 @@ import random
 from colorama import Fore
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
+import threading 
 
 # Définir la version du bot
-version_bot = "casino BOT- PAR Maxime Version 1.01"
+version_bot = "casino BOT- PAR Maxime Version 1.2" # pour le respect de mon trvaille merci de ne pas modifier cette ligne 
 
 class Color:
     PURPLE = '\033[95m'
@@ -60,10 +69,10 @@ with open('bot.pid', 'w', encoding='utf-8') as f:
     f.write(str(os.getpid()))
 
 # Configuration de la base de données
-db_host = "host-database"
-db_user = "user-database"
-db_password = "mot-de-pass-database"
-db_name = "nom-database"
+db_host = "localhost"
+db_user = "casino"
+db_password = "votre-mot-de-pass"
+db_name = "casino"
 
 # Connexion à la base de données
 try:
@@ -88,6 +97,139 @@ def creer_compte(nom_utilisateur):
         print(f"Erreur lors de la création du compte: {e}")
         conn.rollback()
         return False
+
+def generer_page_stats_joueurs():
+    try:
+        # Récupérer tous les comptes
+        cursor.execute("SELECT nom_utilisateur, solde_banque, solde_jeux FROM comptes")
+        joueurs = cursor.fetchall()
+
+        # Commencer la construction de la page HTML avec styles CSS
+        html_content = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Statistiques des Joueurs</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    background-color: #f4f4f9;
+                    color: #333;
+                    margin: 0;
+                    display: flex;
+                    flex-direction: column;
+                    min-height: 100vh;
+                }
+                h1 {
+                    text-align: center;
+                    background-color: #4CAF50;
+                    color: white;
+                    padding: 20px 0;
+                    margin-bottom: 20px;
+                }
+                table {
+                    width: 70%;
+                    margin: 0 auto;
+                    border-collapse: collapse;
+                    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+                    background-color: #fff;
+                }
+                th, td {
+                    padding: 12px;
+                    text-align: center;
+                    border-bottom: 1px solid #ddd;
+                }
+                th {
+                    background-color: #4CAF50;
+                    color: white;
+                }
+                tr:hover {
+                    background-color: #f1f1f1;
+                }
+                td {
+                    color: #555;
+                }
+                .footer {
+                    text-align: center;
+                    padding: 20px;
+                    background-color: #4CAF50;
+                    color: white;
+                    margin-top: auto;
+                }
+                .commands {
+                    margin: 20px auto;
+                    width: 70%;
+                    background-color: #e7f3fe;
+                    padding: 15px;
+                    border-radius: 5px;
+                    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                }
+            </style>
+        </head>
+        <body>
+            <h1>Statistiques des Joueurs</h1>
+            <table>
+                <tr>
+                    <th>Nom d'utilisateur</th>
+                    <th>Solde Banque</th>
+                    <th>Solde Jeux</th>
+                </tr>
+        """
+
+        # Ajouter chaque joueur dans le tableau HTML
+        for joueur in joueurs:
+            nom_utilisateur, solde_banque, solde_jeux = joueur
+            html_content += f"""
+                <tr>
+                    <td>{nom_utilisateur}</td>
+                    <td>{solde_banque} crédits</td>
+                    <td>{solde_jeux} crédits</td>
+                </tr>
+            """
+
+        # Section des commandes
+        html_content += """
+            </table>
+            <div class="commands">
+                <h2>Commandes disponibles</h2>
+                <p><strong>!register [nom_utilisateur]</strong> : Créer un compte.</p>
+                <p><strong>!solde [nom_utilisateur]</strong> : Voir le solde du compte.</p>
+                <p><strong>!convertir [montant]</strong> : Convertir vos crédits de jeux en banque.</p>
+                <p><strong>!casino [montant]</strong> : Jouer au jeu du casino (ex: !casino 50).</p>
+                <p><strong>!roulette [nombre]</strong> : Jouer au jeu de la roulette.</p>
+                <p><strong>!slots [montant]</strong> : Jouer aux machines à sous.</p>
+                <p><strong>!des [montant]</strong> : Jouer au jeu de dés.</p>
+                <p><strong>!transfert [montant] : transfert des crédits de votre compte en banque vers votre compte de jeux.</p>
+                <p>Rejoignez le salon <strong>#casino</strong> pour jouer !</p>
+            </div>
+            <div class="footer">
+                <p>&copy; 2024 Casino IRC Python By Maxime - Tous droits réservés.</p>
+            </div>
+        </body>
+        </html>
+        """
+
+        # Chemin de la page HTML à générer
+        chemin_html = "/var/www/html/stats_joueurs.html"
+
+        # Écrire le contenu HTML dans un fichier
+        with open(chemin_html, "w") as file:
+            file.write(html_content)
+
+        print(f"Page HTML générée avec succès à l'emplacement: {chemin_html}")
+
+    except mariadb.Error as e:
+        print(f"Erreur lors de la génération de la page HTML: {e}")
+
+# Exemple d'utilisation : Créer un compte puis générer la page HTML des stats
+if creer_compte("Elias"):
+    print("Compte Elias créé avec succès.")
+else:
+    print("Échec de la création du compte.")
+
+# Générer la page HTML avec les statistiques des joueurs
+generer_page_stats_joueurs()
 
 # Ajouter une fonction pour vérifier si un utilisateur est enregistré
 def est_enregistre(nom_utilisateur):
@@ -329,13 +471,14 @@ def mettre_a_jour_solde_banque(nom_utilisateur, nouveau_solde_banque):
 
 def mettre_a_jour_solde(nom_utilisateur, solde_banque, solde_jeux):
     try:
-        cursor.execute("UPDATE comptes SET solde_banque=?, solde_jeux=?, dernier_jeu=? WHERE nom_utilisateur=?", (solde_banque, solde_jeux, datetime.now(), nom_utilisateur))
-        conn.commit()
+        cursor.execute("UPDATE comptes SET solde_banque=?, solde_jeux=? WHERE nom_utilisateur=?", (solde_banque, solde_jeux, nom_utilisateur))
+        conn.commit()  # Assurez-vous que les modifications sont engagées
+        generer_page_stats_joueurs()  # Générer la page des stats après la mise à jour
         return True
     except mariadb.Error as e:
-        print(f"{Fore.RED}Erreur lors de la mise à jour du solde: {e}{Fore.END}")
-        conn.rollback()
+        print(f"Erreur lors de la mise à jour du solde: {e}")
         return False
+
 
 def transfert_credit(nom_utilisateur, montant):
     solde_banque = get_solde_banque(nom_utilisateur)
@@ -388,6 +531,24 @@ def gestion_commande_casino(nom_utilisateur, commande):
         else:
             return f"{Fore.RED}Commande invalide. Utilisation : !casino [montant]{Fore.RESET}"
 
+def gestion_commande_stats(nom_utilisateur, commande):
+    print(f"Commande reçue: {commande}")  # Pour le débogage
+
+    if commande == "!statscas":
+        print(f"{nom_utilisateur} a demandé à voir les statistiques.")
+        return f"Voici les statistiques des joueurs: [Cliquez ici pour voir les stats](http://51.38.113.103/stats_joueurs.html)"
+    
+    # Autres commandes à gérer
+    # ...
+
+# Testez la fonction manuellement
+response = gestion_commande_casino("joueur_test", "!statscas")
+print(response)  # Cela devrait afficher le message avec le lien
+
+
+# Testez la fonction manuellement
+response = gestion_commande_casino("joueur_test", "!statscas")
+print(response)  # Cela devrait afficher le message avec le lien
 
 def jeu_de_des(nom_utilisateur, montant_mise):
     if montant_mise <= 0:
@@ -417,6 +578,7 @@ def jeu_de_des(nom_utilisateur, montant_mise):
         message = f"{Fore.RED}Une erreur est survenue lors de la mise à jour du solde.{Fore.RESET}"
     
     return message
+
 
 
 def gestion_commande_roulette(nom_utilisateur, commande):
@@ -592,10 +754,11 @@ def envoyer_aide(nom_utilisateur):
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !ajouterargent [nom_utilisateur] [montant] : credite de l'agennt sur le compte d'un joueur.\n".encode())
     else:
         irc.send(f"PRIVMSG {nom_utilisateur} :\x0304Commandes disponibles :\n".encode())
-        irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !register [nom_utilisateur] : Créer un compte.\n".encode())
+        irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !register [nom_utilisateur] : Créer un compte.(ex: register Maxime)\n".encode())
+        irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !casino [montant] : joue au jeu du casino (ex: !casino 50).\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !solde [nom_utilisateur] : Voir le solde du compte.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !convertir [montant] converti vos credit de jeux et les met en banque.\n".encode())
-        irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !casino [montant] : joue au jeu du casino (ex: !casino 50).\n".encode())
+        irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !transfert [montant] : transfert des crédits de votre compte en banque vers votre compte de jeux.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !roulette [nombre] : jouer au jeux de la roulette.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !slots [montant] : joue au machine a sous.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !des [montant] : joue au jeux de dès.\n".encode())
@@ -622,10 +785,9 @@ bot_channels = set()
 irc_channels = ["#extra-cool", "#casino", "#casinoadmin"]
 nickname = "CasinoBot"
 password = "votre-mot-de-pass"
-nickserv_password = "votre-mot(de-pass"
-ircop_password = "votre-mot(de-pass"  # Ajoutez votre mot de passe IRCop ici
+nickserv_password = "votre-mot-de-pass"
+ircop_password = "votre-mot-de-pass"  # Ajoutez votre mot de passe IRCop ici
 admins_file = "admins.txt"
-
 
 # Lire les administrateurs depuis un fichier
 def lire_admins():
@@ -737,9 +899,13 @@ def lister_admins(sender, channel):
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.connect((server, port))
 
-# Envelopper la socket dans une couche SSL/TLS
-irc = ssl.wrap_socket(sock)
+# Création d'un contexte SSL
+context = ssl.create_default_context()
 
+# Envelopper la socket dans une couche SSL/TLS
+irc = context.wrap_socket(sock, server_hostname=server)
+
+# Envoyer les commandes IRC
 irc.send(f"USER {bot_name} 0 * :{bot_name}\n".encode())
 irc.send(f"NICK {bot_name}\n".encode())
 
@@ -769,6 +935,23 @@ irc.send(f"JOIN {casino_channel}\n".encode())
 for channel in irc_channels:
     irc.send(f"JOIN {channel}\n".encode())
     bot_channels.add(channel)
+
+# Fonction pour envoyer l'annonce toutes les 5 minutes
+def send_casino_announcement():
+    while True:
+        try:
+            # Message avec couleur rouge
+            message = "\x03" + "04" + "Rejoignez-nous sur #casino pour jouer au casino!"  # Couleur 04 (rouge)
+            irc.send(f"PRIVMSG #extra-cool :{message}\n".encode()) # modifier votre salon 
+            print("Message envoyé avec succès à #extra-cool")
+            time.sleep(300)  # Attendre 300 secondes (5 minutes) avant d'envoyer le prochain message
+        except Exception as e:
+            print(f"Erreur lors de l'envoi du message : {e}")
+
+# Lancer l'annonce dans un thread séparé
+announcement_thread = threading.Thread(target=send_casino_announcement)
+announcement_thread.daemon = True  # Le thread se ferme lorsque le programme principal se ferme
+announcement_thread.start()
 
 # Boucle principale pour traiter les messages
 while True:
