@@ -75,6 +75,13 @@ ajout d'un timer de 30sec entre chaque jeux pour eviter le spamm salon
 
 ajout d'une commande admin pour ajouter de l'argent a un joueur ( !ajouterargent [nom_utilisateur] [montant] )
 
+version 1.2
+
+modification 30/09/2024:
+                                                        
+ajout d'une page html des stats joueur
+         
+ajout d'une anonce sur un salon pour inviter les users a jouer sur #casino  
 
 ## Auteurs
 * **Maxime** irc.extra-cool.fr https://extra-cool.fr/ )
