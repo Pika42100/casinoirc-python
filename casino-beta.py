@@ -30,7 +30,16 @@
 #                                                                                          #
 #    ajout d'une anonce sur un salon pour inviter les users a jouer sur #casino            #
 #                                                                                          #
-#  casino bot en python                                                                    #
+#                                                                                          #
+#    version 1.3                                                                           #
+#                                                                                          #
+#    modification 03/04/2025:                                                              #
+#                                                                                          #
+#                                                                                          #
+#   correction de bug                                                                      #                                                       
+#                                                                                          #
+#                                                                                          #
+#    casino bot en python  by Maxime   irc.extra-cool.fr https://extra-cool.fr/            #
 ############################################################################################
 
 import sys
@@ -48,9 +57,12 @@ from colorama import Fore
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 import threading 
+import mysql.connector
+import schedule
+import pytz
 
 # Définir la version du bot
-version_bot = "casino BOT- PAR Maxime Version 1.2" # pour le respect de mon trvaille merci de ne pas modifier cette ligne 
+version_bot = "casino BOT- PAR Maxime Version 1.2"  # pour le respect de mon travail merci de ne pas modifier cette ligne 
 
 class Color:
     PURPLE = '\033[95m'
@@ -70,9 +82,9 @@ with open('bot.pid', 'w', encoding='utf-8') as f:
 
 # Configuration de la base de données
 db_host = "localhost"
-db_user = "casino"
-db_password = "votre-mot-de-pass"
-db_name = "casino"
+db_user = "utilisateur" #a changer
+db_password = "mot-de_pass" #a changer
+db_name = "nom-database" #a changer
 
 # Connexion à la base de données
 try:
@@ -87,14 +99,156 @@ except mariadb.Error as e:
     print(f"Erreur de connexion à la base de données: {e}")
     exit(1)
 
-# Fonction pour créer un compte utilisateur avec 1000 crédits à l'inscription
+
+# Function to get current time in France and Quebec
+def obtenir_heure():
+    now = datetime.now(pytz.timezone('Europe/Paris'))
+    heure_france = now.strftime("%Hh%M (et %S secondes)")
+    
+    now_quebec = now.astimezone(pytz.timezone('America/Toronto'))
+    heure_quebec = now_quebec.strftime("%Hh%M")
+    
+    return f"[Heure] est à l'heure française (GMT+1). Heure actuelle : {heure_france}. Au Québec, il est {heure_quebec}."
+
+# Function to randomly determine if the player wins or loses
+def gagner_ou_perdre():
+    return random.choice([True, False])
+
+# Function to manage the casino command
+def gestion_commande_casino(nom_utilisateur, commande):
+    match = re.match(r"!casino(?: (\d+))?", commande)
+    montant = int(match.group(1)) if match and match.group(1) else 10  # Default amount is 10
+    
+    solde_jeux = get_solde_jeux(nom_utilisateur)
+    if solde_jeux is not None:
+        if solde_jeux >= montant:
+            gagne = gagner_ou_perdre()  # Determine if the player wins or loses
+            if gagne:
+                nouveau_solde_jeux = solde_jeux + montant * 2
+                message = f"{Fore.BLUE}Vous avez gagné {montant} ! Votre nouveau solde en jeux est de {nouveau_solde_jeux}.{Fore.RESET}"
+            else:
+                nouveau_solde_jeux = solde_jeux - montant
+                message = f"{Fore.RED}Vous avez perdu {montant} ! Votre solde en jeux est de {nouveau_solde_jeux}.{Fore.RESET}"
+            
+            # Update balance
+            if mettre_a_jour_solde(nom_utilisateur, get_solde_banque(nom_utilisateur), nouveau_solde_jeux):
+                enregistrer_partie(nom_utilisateur, "casino", montant, gagne)
+                return message
+            else:
+                return f"{Fore.RED}Une erreur est survenue lors de la mise à jour du solde.{Fore.RESET}"
+        else:
+            return f"{Fore.RED}Solde en jeux insuffisant. Vous devez taper !transfert (montant) pour mettre des Extrazino dans votre solde de jeux pour jouer.{Fore.RESET}"
+    else:
+        return f"{Fore.RED}Utilisateur non trouvé. Veuillez d'abord vous enregistrer avec la commande !register.{Fore.RESET}"
+
+# Command !heur to display the current time
+def gestion_commande_heur(commande):
+    if commande == "!heur":
+        return obtenir_heure()
+    else:
+        return "Commande non reconnue. Utilisation : !heur"
+
+# Function to handle commands
+def gestion_commande(nom_utilisateur, commande):
+    mots = commande.split()
+    if mots[0] == "!heur":
+        return gestion_commande_heur(commande)
+    elif mots[0] == "!casino":
+        return gestion_commande_casino(nom_utilisateur, commande)
+    # Additional commands can be added here
+    return "Commande invalide ou non reconnue."
+
+# Automated announcements every hour and half-hour with a fun phrase
+def annoncer_heure():
+    while True:
+        now = datetime.now(pytz.timezone('Europe/Paris'))
+        minute = now.minute
+        second = now.second
+        
+        if minute in [0, 30] and second == 0:
+            phrases_sympas = [
+                "C'est l'heure de se dégourdir les jambes !",
+                "Une autre demi-heure vient de passer, continuez votre bon travail !",
+                "Il est temps de prendre une petite pause, non ?",
+                "Le temps file, profitez de chaque instant !",
+                "C'est l'heure de sourire, même sans raison !"
+            ]
+            phrase = random.choice(phrases_sympas)
+            heure_message = obtenir_heure()
+            full_message = f"{heure_message} - {phrase}"
+            print(full_message)  # Ici on affiche, mais vous pourriez utiliser un envoi de message spécifique au bot
+
+        # Sleep for 1 second before checking again
+        time.sleep(1)
+
+# Start a separate thread for hourly announcements
+annonce_thread = threading.Thread(target=annoncer_heure, daemon=True)
+annonce_thread.start()
+
+
+    
+
+# Fonction pour vérifier si un utilisateur a un compte
+def compte_existe(nom_utilisateur):
+    try:
+        cursor.execute("SELECT COUNT(*) FROM comptes WHERE nom_utilisateur = ?", (nom_utilisateur,))
+        return cursor.fetchone()[0] > 0
+    except mariadb.Error as e:
+        print(f"Erreur lors de la vérification du compte : {e}")
+        return False
+
+# Fonction pour obtenir le nombre de joueurs inscrits
+def nombre_joueurs_inscrits():
+    try:
+        cursor.execute("SELECT COUNT(*) FROM comptes")
+        return cursor.fetchone()[0]
+    except mariadb.Error as e:
+        print(f"Erreur lors de la récupération du nombre de joueurs : {e}")
+        return 0
+
+# Fonction pour obtenir le nombre de parties jouées
+def nombre_parties_jouees():
+    try:
+        print("Récupération du nombre de parties jouées...")  # Ligne de débogage
+        cursor.execute("SELECT COUNT(*) FROM parties")
+        return cursor.fetchone()[0]
+    except mariadb.Error as e:
+        print(f"Erreur lors de la récupération du nombre de parties jouées : {e}")
+        return 0
+
+
+# Fonction pour envoyer une notice à l'utilisateur qui rejoint sans compte, avec des couleurs IRC et du texte en gras
+def envoyer_notice(bot_connection, utilisateur, message):
+    bot_connection.send(f"NOTICE {utilisateur} :{message}\n".encode())
+
+
+def enregistrer_partie(nom_utilisateur, jeu, montant_mise, gagne):
+    try:
+        print(f"Enregistrement de la partie pour {nom_utilisateur}...")
+        cursor.execute("INSERT INTO parties (nom_utilisateur, jeu, montant_mise, gagne, date_partie) VALUES (?, ?, ?, ?, ?)",
+                       (nom_utilisateur, jeu, montant_mise, gagne, datetime.now()))
+        conn.commit()
+        print(f"Partie enregistrée pour {nom_utilisateur}.")
+    except mariadb.Error as e:
+        print(f"Erreur lors de l'enregistrement de la partie : {e}")
+
+
+# Fonction pour créer un compte utilisateur avec 1000 Extrazino à l'inscription
 def creer_compte(nom_utilisateur):
     try:
+        # Vérifier si l'utilisateur existe déjà
+        cursor.execute("SELECT COUNT(*) FROM comptes WHERE nom_utilisateur = ?", (nom_utilisateur,))
+        if cursor.fetchone()[0] > 0:
+            print(f"Erreur : Le compte pour {nom_utilisateur} existe déjà.")
+            return False
+
+        # Créer le compte
         cursor.execute("INSERT INTO comptes (nom_utilisateur, solde_banque, solde_jeux, dernier_credit) VALUES (?, 1000, 0, ?)", (nom_utilisateur, datetime.now().date()))
         conn.commit()
+        print(f"Compte {nom_utilisateur} créé avec succès.")
         return True
     except mariadb.Error as e:
-        print(f"Erreur lors de la création du compte: {e}")
+        print(f"Erreur lors de la création du compte : {e}")
         conn.rollback()
         return False
 
@@ -107,9 +261,11 @@ def generer_page_stats_joueurs():
         # Commencer la construction de la page HTML avec styles CSS
         html_content = """
         <!DOCTYPE html>
-        <html>
+        <html lang="fr">
         <head>
             <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <link rel="stylesheet" href="css/styles.css?v=1.0">
             <title>Statistiques des Joueurs</title>
             <style>
                 body {
@@ -165,10 +321,40 @@ def generer_page_stats_joueurs():
                     border-radius: 5px;
                     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
                 }
+                nav {
+                    background-color: #333;
+                    overflow: hidden;
+                }
+                nav a {
+                    float: left;
+                    display: block;
+                    color: #f2f2f2;
+                    text-align: center;
+                    padding: 14px 16px;
+                    text-decoration: none;
+                }
+                nav a:hover {
+                    background-color: #ddd;
+                    color: black;
+                }
             </style>
         </head>
         <body>
-            <h1>Statistiques des Joueurs</h1>
+            <header>
+                <img src="images/logo.png" alt="Logo IRC" style="width: 150px;"> <!-- Ajustez le chemin et la taille -->
+                <h1>Statistiques des Joueurs</h1>
+            </header>
+            <nav>
+                <a href="index.php">Accueil</a>
+                <a href="staff.html">Équipe</a>
+                <a href="status.php">Statut</a>
+                <a href="chat.html">Chat</a>
+                <a href="download.html">Téléchargements</a>
+                <a href="channels.php">Salons</a>
+                <a href="github.html">GitHub</a>
+                <a href="irc_stats.html">Statistiques salon</a>
+                <a href="stats_joueurs.html">Statistiques Casino</a>
+            </nav>
             <table>
                 <tr>
                     <th>Nom d'utilisateur</th>
@@ -183,8 +369,8 @@ def generer_page_stats_joueurs():
             html_content += f"""
                 <tr>
                     <td>{nom_utilisateur}</td>
-                    <td>{solde_banque} crédits</td>
-                    <td>{solde_jeux} crédits</td>
+                    <td>{solde_banque} Extrazino</td>
+                    <td>{solde_jeux} Extrazino</td>
                 </tr>
             """
 
@@ -195,12 +381,12 @@ def generer_page_stats_joueurs():
                 <h2>Commandes disponibles</h2>
                 <p><strong>!register [nom_utilisateur]</strong> : Créer un compte.</p>
                 <p><strong>!solde [nom_utilisateur]</strong> : Voir le solde du compte.</p>
-                <p><strong>!convertir [montant]</strong> : Convertir vos crédits de jeux en banque.</p>
+                <p><strong>!convertir [montant]</strong> : Convertir vos Extrazino de jeux en banque.</p>
                 <p><strong>!casino [montant]</strong> : Jouer au jeu du casino (ex: !casino 50).</p>
                 <p><strong>!roulette [nombre]</strong> : Jouer au jeu de la roulette.</p>
                 <p><strong>!slots [montant]</strong> : Jouer aux machines à sous.</p>
                 <p><strong>!des [montant]</strong> : Jouer au jeu de dés.</p>
-                <p><strong>!transfert [montant] : transfert des crédits de votre compte en banque vers votre compte de jeux.</p>
+                <p><strong>!transfert [montant]</strong> : Transfert des Extrazino de votre compte en banque vers votre compte de jeux.</p>
                 <p>Rejoignez le salon <strong>#casino</strong> pour jouer !</p>
             </div>
             <div class="footer">
@@ -231,6 +417,8 @@ else:
 # Générer la page HTML avec les statistiques des joueurs
 generer_page_stats_joueurs()
 
+
+
 # Ajouter une fonction pour vérifier si un utilisateur est enregistré
 def est_enregistre(nom_utilisateur):
     try:
@@ -240,6 +428,7 @@ def est_enregistre(nom_utilisateur):
     except mariadb.Error as e:
         print(f"Erreur lors de la vérification de l'enregistrement de l'utilisateur: {e}")
         return False
+
 
 # Fonction pour récupérer le solde d'un utilisateur
 def get_solde(nom_utilisateur):
@@ -284,9 +473,9 @@ def ajouter_argent(nom_administrateur, commande):
     
     # Appel à la fonction pour créditer le compte
     if crediter_compte(nom_utilisateur, montant):
-        return f"{Fore.GREEN}Montant de {montant} crédits ajouté avec succès au compte de {nom_utilisateur}.{Fore.RESET}"
+        return f"{Fore.GREEN}Montant de {montant} Extrazino ajouté avec succès au compte de {nom_utilisateur}.{Fore.RESET}"
     else:
-        return f"{Fore.RED}Erreur lors de l'ajout de crédits au compte de {nom_utilisateur}.{Fore.RESET}"
+        return f"{Fore.RED}Erreur lors de l'ajout de Extrazino au compte de {nom_utilisateur}.{Fore.RESET}"
 
 def crediter_compte(nom_utilisateur, montant):
     try:
@@ -361,11 +550,11 @@ def gestion_commande(nom_utilisateur, commande):
                     if solde_banque is not None:
                         nouveau_solde_banque = solde_banque + montant
                         if mettre_a_jour_solde(nom_utilisateur, nouveau_solde_banque, nouveau_solde_jeux):
-                            return f"{Fore.BLUE}Vous avez déposé {montant} crédits de jeux dans votre compte en banque. Nouveau solde en banque : {nouveau_solde_banque}, Nouveau solde en jeux : {nouveau_solde_jeux}"
+                            return f"{Fore.BLUE}Vous avez déposé {montant} Extrazino de jeux dans votre compte en banque. Nouveau solde en banque : {nouveau_solde_banque}, Nouveau solde en jeux : {nouveau_solde_jeux}"
                         else:
                             return f"{Fore.RED}Une erreur est survenue lors du dépôt."
                     else:
-                        return f"{Fore.RED}Utilisateur non trouvé veuiller dabors vous enregistre avec la commande !register."
+                        return f"{Fore.RED}Utilisateur non trouvé veuillez d'abord vous enregistrer avec la commande !register."
                 else:
                     return f"{Fore.RED}Solde en jeux insuffisant."
             else:
@@ -390,11 +579,11 @@ def gestion_commande(nom_utilisateur, commande):
                     if solde_banque is not None:
                         nouveau_solde_banque = solde_banque + montant
                         if mettre_a_jour_solde(nom_utilisateur, nouveau_solde_banque, nouveau_solde_jeux):
-                            return f"{Fore.BLUE}Vous avez converti {montant} crédits de jeux en {montant} crédits en banque. Nouveau solde en banque : {nouveau_solde_banque}, Nouveau solde en jeux : {nouveau_solde_jeux}"
+                            return f"{Fore.BLUE}Vous avez converti {montant} Extrazino de jeux en {montant} Extrazino en banque. Nouveau solde en banque : {nouveau_solde_banque}, Nouveau solde en jeux : {nouveau_solde_jeux}"
                         else:
                             return f"{Fore.RED}Une erreur est survenue lors de la conversion."
                     else:
-                        return f"{Fore.RED}Utilisateur non trouvé veuiller dabors vous enregistre avec la commande !register."
+                        return f"{Fore.RED}Utilisateur non trouvé veuillez d'abord vous enregistrer avec la commande !register."
                 else:
                     return f"{Fore.RED}Solde en jeux insuffisant."
             else:
@@ -406,19 +595,20 @@ def gestion_commande(nom_utilisateur, commande):
         if solde_banque is not None:
             return f"{Fore.BLUE}Solde en banque : {solde_banque}"
         else:
-            return f"{Fore.RED}Utilisateur non trouvé veuiller dabors vous enregistre avec la commande !register."
+            return f"{Fore.RED}Utilisateur non trouvé veuillez d'abord vous enregistrer avec la commande !register."
     elif commande.startswith("!solde_jeux"):
         solde_jeux = get_solde_jeux(nom_utilisateur)
         if solde_jeux is not None:
             return f"{Fore.BLUE}Solde en jeux : {solde_jeux}"
         else:
-            return f"{Fore.RED}Utilisateur non trouvé veuiller dabors vous enregistre avec la commande !register."
+            return f"{Fore.RED}Utilisateur non trouvé veuillez d'abord vous enregistrer avec la commande !register."
     if commande.startswith("!solde_banque"):
         solde_banque = get_solde_banque(nom_utilisateur)
         if solde_banque is not None:
             return f"Solde en banque : {solde_banque}"
         else:
-            return "Utilisateur non trouvé veuiller dabors vous enregistre avec la commande !register."
+            return "Utilisateur non trouvé veuillez d'abord vous enregistrer avec la commande !register."
+
     mots = commande.split()
     if mots[0] == "!deposer":
         if len(mots) == 2:
@@ -428,11 +618,11 @@ def gestion_commande(nom_utilisateur, commande):
                 if solde_banque is not None:
                     nouveau_solde_banque = solde_banque + montant
                     if mettre_a_jour_solde_banque(nom_utilisateur, nouveau_solde_banque):
-                        return f"Vous avez déposé {montant} crédits dans votre compte en banque. Nouveau solde en banque : {nouveau_solde_banque}"
+                        return f"Vous avez déposé {montant} Extrazino dans votre compte en banque. Nouveau solde en banque : {nouveau_solde_banque}"
                     else:
                         return "Une erreur est survenue lors du dépôt."
                 else:
-                    return "Utilisateur non trouvé veuiller dabors vous enregistre avec la commande !register."
+                    return "Utilisateur non trouvé veuillez d'abord vous enregistrer avec la commande !register."
             else:
                 return "Le montant doit être supérieur à zéro."
         else:
@@ -442,10 +632,11 @@ def gestion_commande(nom_utilisateur, commande):
         if solde_banque is not None:
             return f"Solde en banque : {solde_banque}"
         else:
-            return "Utilisateur non trouvé veuiller dabors vous enregistre avec la commande !register."
+            return "Utilisateur non trouvé veuillez d'abord vous enregistrer avec la commande !register."
 
     if not est_enregistre(nom_utilisateur):  # Vérifier si le joueur est enregistré
         return f"{Fore.RED}Vous devez d'abord vous enregistrer avec !register pour jouer.{Fore.END}"
+
 
 def get_solde_jeux(nom_utilisateur):
     try:
@@ -497,39 +688,11 @@ def transfert_credit(nom_utilisateur, montant):
     nouveau_solde_jeux = solde_jeux + montant
 
     if mettre_a_jour_solde(nom_utilisateur, nouveau_solde_banque, nouveau_solde_jeux):
-        return f"{Fore.BLUE}Vous avez transféré {montant} crédits de votre compte en banque vers votre compte de jeux. Nouveau solde en banque : {nouveau_solde_banque}, Nouveau solde en jeux : {nouveau_solde_jeux}"
+        return f"{Fore.BLUE}Vous avez transféré {montant} Extrazino de votre compte en banque vers votre compte de jeux. Nouveau solde en banque : {nouveau_solde_banque}, Nouveau solde en jeux : {nouveau_solde_jeux}"
     else:
-        return f"{Fore.RED}Une erreur est survenue lors du transfert de crédits."
+        return f"{Fore.RED}Une erreur est survenue lors du transfert de Extrazino."
 
-def gestion_commande_casino(nom_utilisateur, commande):
-    match = re.match(r"!casino (\d+)", commande)
-    if match:
-        montant = int(match.group(1))
-        solde = get_solde(nom_utilisateur)
-        solde_jeux = get_solde_jeux(nom_utilisateur)  # Récupérer le solde de jeux de l'utilisateur
-        if solde_jeux:
-            if solde:
-                solde_banque, solde_jeux = solde
-                if solde_banque >= montant:
-                    if gagner_ou_perdre():
-                        solde_banque -= montant
-                        solde_jeux += montant * 2  
-                        message = f"{Fore.BLUE}Vous avez gagné {montant} ! Votre nouveau solde en jeux est de {solde_jeux}.{Fore.RESET}"
-                    else:
-                        solde_banque -= montant
-                        solde_jeux -= montant  
-                        message = f"{Fore.RED}Vous avez perdu {montant} ! Votre solde en banque est de {solde_banque}. Votre solde en jeux est de {solde_jeux}.{Color.END}"
-                    if mettre_a_jour_solde(nom_utilisateur, solde_banque, solde_jeux):
-                        return message
-                    else:
-                        return f"{Color.PURPLE}Solde insuffisant dans votre banque.{Color.END}"
-                else:
-                    return f"{Color.PURPLE}Solde insuffisant dans votre banque.{Color.END}"
 
-            else:
-                return f"{Fore.RED}Vous n'avez pas suffisamment de crédits de jeux pour jouer veuillez faire un transfert [!transfert montant].{Color.END}"
-        else:
-            return f"{Fore.RED}Commande invalide. Utilisation : !casino [montant]{Fore.RESET}"
 
 def gestion_commande_stats(nom_utilisateur, commande):
     print(f"Commande reçue: {commande}")  # Pour le débogage
@@ -538,45 +701,42 @@ def gestion_commande_stats(nom_utilisateur, commande):
         print(f"{nom_utilisateur} a demandé à voir les statistiques.")
         return f"Voici les statistiques des joueurs: [Cliquez ici pour voir les stats](http://51.38.113.103/stats_joueurs.html)"
     
-    # Autres commandes à gérer
-    # ...
 
 # Testez la fonction manuellement
-response = gestion_commande_casino("joueur_test", "!statscas")
+response = gestion_commande_casino("Maxime", "!statscas")
 print(response)  # Cela devrait afficher le message avec le lien
 
-
-# Testez la fonction manuellement
-response = gestion_commande_casino("joueur_test", "!statscas")
-print(response)  # Cela devrait afficher le message avec le lien
 
 def jeu_de_des(nom_utilisateur, montant_mise):
     if montant_mise <= 0:
         return f"{Fore.RED}Le montant de la mise doit être supérieur à zéro.{Fore.RESET}"
-    
-    solde_banque = get_solde_banque(nom_utilisateur)
-    if solde_banque is None:
+
+    solde_jeux = get_solde_jeux(nom_utilisateur)
+    if solde_jeux is None:
         return f"{Fore.RED}Utilisateur non trouvé. Veuillez d'abord vous enregistrer avec la commande !register.{Fore.RESET}"
-    
-    if solde_banque < montant_mise:
+
+    if solde_jeux < montant_mise:
         return f"{Fore.RED}Solde insuffisant.{Fore.RESET}"
-    
+
     # Lancement du dé
     resultat = random.randint(1, 6)
     if resultat == 6:
         gain = montant_mise * 2  # Gain: double de la mise si le résultat est 6
-        solde_banque += gain
-        message = f"{Fore.GREEN}Vous avez lancé un 6 et gagné {gain} crédits!{Fore.RESET}"
+        nouveau_solde_jeux = solde_jeux + gain
+        message = f"{Fore.GREEN}Vous avez lancé un 6 et gagné {gain} Extrazino!{Fore.RESET}"
     else:
-        solde_banque -= montant_mise
-        message = f"{Fore.RED}Vous avez lancé un {resultat}. Vous perdez votre mise de {montant_mise} crédits.{Fore.RESET}"
-    
-    # Mise à jour du solde en banque après le jeu
-    if mettre_a_jour_solde_banque(nom_utilisateur, solde_banque):
-        message += f" Nouveau solde en banque : {solde_banque}"
+        nouveau_solde_jeux = solde_jeux - montant_mise
+        message = f"{Fore.RED}Vous avez lancé un {resultat}. Vous perdez votre mise de {montant_mise} Extrazino.{Fore.RESET}"
+
+    # Mise à jour du solde en jeux après le jeu
+    if mettre_a_jour_solde(nom_utilisateur, get_solde_banque(nom_utilisateur), nouveau_solde_jeux):
+        message += f" Nouveau solde en jeux : {nouveau_solde_jeux}"
     else:
         message = f"{Fore.RED}Une erreur est survenue lors de la mise à jour du solde.{Fore.RESET}"
-    
+
+    # Enregistrer la partie dans la base de données
+    enregistrer_partie(nom_utilisateur, "dés", montant_mise, resultat == 6)
+
     return message
 
 
@@ -586,27 +746,31 @@ def gestion_commande_roulette(nom_utilisateur, commande):
     if mots[0] == "!roulette":
         if len(mots) == 2:
             montant = int(mots[1])
-            solde = get_solde(nom_utilisateur)
-            if solde:
-                solde_banque, solde_jeux = solde
-                if solde_banque >= montant:
+            solde_jeux = get_solde_jeux(nom_utilisateur)
+            if solde_jeux is not None:
+                if solde_jeux >= montant:
                     resultat_jeu = jeu_roulette()
                     numero_gagnant, couleur, parite = resultat_jeu
                     if gagner_ou_perdre():
-                        solde_jeux += montant * 2
-                        message = f"La bille est tombée sur le {numero_gagnant} ({couleur}, {parite}). Vous avez gagné {montant} crédits !"
+                        nouveau_solde_jeux = solde_jeux + montant * 2
+                        message = f"La bille est tombée sur le {numero_gagnant} ({couleur}, {parite}). Vous avez gagné {montant} Extrazino !"
+                        gagne = True
                     else:
-                        solde_jeux -= montant
-                        message = f"La bille est tombée sur le {numero_gagnant} ({couleur}, {parite}). Vous avez perdu {montant} crédits !"
+                        nouveau_solde_jeux = solde_jeux - montant
+                        message = f"La bille est tombée sur le {numero_gagnant} ({couleur}, {parite}). Vous avez perdu {montant} Extrazino !"
+                        gagne = False
 
-                    if mettre_a_jour_solde(nom_utilisateur, solde_banque, solde_jeux):
+                    if mettre_a_jour_solde(nom_utilisateur, get_solde_banque(nom_utilisateur), nouveau_solde_jeux):
                         message += " Veuillez attendre 30 secondes avant de jouer à nouveau."
                         irc.send(f"PRIVMSG {channel} :{message}\n".encode())
                         time.sleep(30)
                     else:
                         message = "Une erreur est survenue lors de la mise à jour du solde."
+
+                    # Enregistrer la partie dans la base de données
+                    enregistrer_partie(nom_utilisateur, "roulette", montant, gagne)
                 else:
-                    message = "Solde insuffisant dans votre banque."
+                    message = "Solde insuffisant dans votre jeu."
             else:
                 message = "Utilisateur non trouvé veuillez d'abord vous enregistrer avec la commande !register."
         else:
@@ -614,6 +778,7 @@ def gestion_commande_roulette(nom_utilisateur, commande):
     else:
         message = "Commande invalide."
     return message
+
 
 # Définition de la variable globale symboles
 symboles = {
@@ -631,41 +796,44 @@ symboles = {
 jackpot = 1
 
 def jeu_slots(nom_utilisateur, montant_mise):
-    solde_banque = get_solde_banque(nom_utilisateur)
     solde_jeux = get_solde_jeux(nom_utilisateur)
 
-    if solde_banque is None or solde_jeux is None:
-        return "Solde insuffisant dans votre banque pour effectuer cette mise."
+    if solde_jeux is None:
+        return "Utilisateur non trouvé. Veuillez d'abord vous enregistrer avec la commande !register."
 
-    if solde_banque >= montant_mise:
-        solde_banque -= montant_mise
+    if solde_jeux >= montant_mise:
+        solde_jeux -= montant_mise
         symboles_tires = [random.choice(list(symboles.keys())) for _ in range(3)]
-        resultat = [symboles[symbole] for symbole in symboles_tires]
         symboles_alignes = len(set(symboles_tires))
 
         if jackpot == 1 and symboles_alignes == 1:
             jackpot_amount = random.randint(1000, 10000)
             solde_jeux += jackpot_amount
-            message = f"Jackpot !! Vous avez gagné {jackpot_amount} crédits de jeux ! Résultat: {' - '.join(symboles_tires)}."
+            message = f"Jackpot !! Vous avez gagné {jackpot_amount} Extrazino de jeux ! Résultat: {' - '.join(symboles_tires)}."
+            gagne = True
         elif symboles_alignes == 2:
             gain = montant_mise * 2
             solde_jeux += gain
-            message = f"Bravo ! Vous avez gagné {gain} crédits de jeux ! Résultat: {' - '.join(symboles_tires)}."
+            message = f"Bravo ! Vous avez gagné {gain} Extrazino de jeux ! Résultat: {' - '.join(symboles_tires)}."
+            gagne = True
         else:
             message = f"Dommage ! Vous n'avez rien gagné cette fois-ci. Résultat: {' - '.join(symboles_tires)}."
+            gagne = False
 
-        # Mise à jour du solde et préparation du message final
-        if mettre_a_jour_solde(nom_utilisateur, solde_banque, solde_jeux):
+        # Mise à jour du solde en jeux
+        if mettre_a_jour_solde(nom_utilisateur, get_solde_banque(nom_utilisateur), solde_jeux):
             message += " Veuillez attendre 30 secondes avant de jouer à nouveau."
         else:
-            message = "Une erreur est survenue lors de la mise à jour du solde."
-    else:
-        message = "Solde insuffisant dans votre banque pour effectuer cette mise."
+            return "Une erreur est survenue lors de la mise à jour du solde."
 
-    # Envoyer le message et appliquer le délai après toutes les interactions
-    irc.send(f"PRIVMSG {channel} :{message}\n".encode())
-    time.sleep(30)  # Attendre 30 secondes avant que le joueur puisse rejouer
+        # Enregistrement de la partie
+        enregistrer_partie(nom_utilisateur, "slots", montant_mise, gagne)
+    else:
+        message = "Solde insuffisant dans votre jeu pour effectuer cette mise."
+
     return message
+
+
 
 articles = {
     "Livre": 50,
@@ -676,27 +844,36 @@ articles = {
 }
 
 def jeu_juste_prix(nom_utilisateur, montant_mise):
-    solde_banque = get_solde_banque(nom_utilisateur)
-    if solde_banque is not None and solde_banque >= montant_mise:
-        solde_banque -= montant_mise
+    solde_jeux = get_solde_jeux(nom_utilisateur)
+    
+    if solde_jeux is not None and solde_jeux >= montant_mise:
+        solde_jeux -= montant_mise
         prix_a_deviner = random.randint(1, 100)
         numero_propose = random.randint(1, 100)
+
         if numero_propose == prix_a_deviner:
             gain = montant_mise * 2
-            solde_jeux = get_solde_jeux(nom_utilisateur)
             solde_jeux += gain
-            message = f"Bravo ! Vous avez deviné le juste prix ({prix_a_deviner}) ! Vous avez gagné {gain} crédits de jeux."
+            message = f"Bravo ! Vous avez deviné le juste prix ({prix_a_deviner}) ! Vous avez gagné {gain} Extrazino de jeux."
+            gagne = True
         else:
             message = f"Dommage ! Le juste prix était {prix_a_deviner}. Vous avez perdu votre mise."
+            gagne = False
 
-        if mettre_a_jour_solde(nom_utilisateur, solde_banque, solde_jeux):
+        if mettre_a_jour_solde(nom_utilisateur, get_solde_banque(nom_utilisateur), solde_jeux):
             message += " Veuillez attendre 30 secondes avant de jouer à nouveau."
             irc.send(f"PRIVMSG {channel} :{message}\n".encode())
             time.sleep(30)
         else:
             message = "Une erreur est survenue lors de la mise à jour du solde."
+            gagne = False  # Si une erreur survient, on considère que le joueur n'a pas gagné
     else:
-        message = "Solde insuffisant dans votre banque pour effectuer cette mise."
+        message = "Solde insuffisant dans votre jeu pour effectuer cette mise."
+        gagne = False
+
+    # Enregistrer la partie dans la base de données
+    enregistrer_partie(nom_utilisateur, "juste_prix", montant_mise, gagne)
+    
     return message
 
 
@@ -706,6 +883,7 @@ def attribuer_article(montant_mise):
             return article
     return "Aucun article"
 
+# Function to randomly determine if the player wins or loses
 def gagner_ou_perdre():
     return random.choice([True, False])
 
@@ -741,8 +919,8 @@ def envoyer_aide(nom_utilisateur):
         irc.send(f"PRIVMSG {nom_utilisateur} :\x0304Commandes disponibles (administrateur) :\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !register [nom_utilisateur] : Créer un compte.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !solde [nom_utilisateur] : Voir le solde du compte.\n".encode())
-        irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !convertir [montant] converti vos credit de jeux et les met en banque.\n".encode())
-        irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !transfert [montant] : transfert des crédits de votre compte en banque vers votre compte de jeux.\n".encode())
+        irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !convertir [montant] converti vos Extrazino de jeux et les met en banque.\n".encode())
+        irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !transfert [montant] : transfert des Extrazino de votre compte en banque vers votre compte de jeux.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !roulette [nombre] : jouer au jeux de la roulette.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !casino [montant] : joue au jeu du casino (ex: !casino 50).\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !slots [montant] : joue au machine a sous.\n".encode())
@@ -751,14 +929,14 @@ def envoyer_aide(nom_utilisateur):
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !join [#channel] : fait joindre le bot sur un channel.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !part [#channel] : fait Partire le bot d'un channel.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !supprime [nom_utilisateur] : Supprimer un compte.\n".encode())
-        irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !ajouterargent [nom_utilisateur] [montant] : credite de l'agennt sur le compte d'un joueur.\n".encode())
+        irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !ajouterargent [nom_utilisateur] [montant] : Extrazinoe de l'agennt sur le compte d'un joueur.\n".encode())
     else:
         irc.send(f"PRIVMSG {nom_utilisateur} :\x0304Commandes disponibles :\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !register [nom_utilisateur] : Créer un compte.(ex: register Maxime)\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !casino [montant] : joue au jeu du casino (ex: !casino 50).\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !solde [nom_utilisateur] : Voir le solde du compte.\n".encode())
-        irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !convertir [montant] converti vos credit de jeux et les met en banque.\n".encode())
-        irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !transfert [montant] : transfert des crédits de votre compte en banque vers votre compte de jeux.\n".encode())
+        irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !convertir [montant] converti vos Extrazino de jeux et les met en banque.\n".encode())
+        irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !transfert [montant] : transfert des Extrazino de votre compte en banque vers votre compte de jeux.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !roulette [nombre] : jouer au jeux de la roulette.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !slots [montant] : joue au machine a sous.\n".encode())
         irc.send(f"PRIVMSG {nom_utilisateur} : \x0310- !des [montant] : joue au jeux de dès.\n".encode())
@@ -783,10 +961,10 @@ casino_channel = "#casino"
 bot_name = "CasinoBot"
 bot_channels = set()
 irc_channels = ["#extra-cool", "#casino", "#casinoadmin"]
-nickname = "CasinoBot"
+nickname = "Extraino"
 password = "votre-mot-de-pass"
-nickserv_password = "votre-mot-de-pass"
-ircop_password = "votre-mot-de-pass"  # Ajoutez votre mot de passe IRCop ici
+nickserv_password = "votre-mot(de-pass"
+ircop_password = "votre-mot-pass"  # Ajoutez votre mot de passe IRCop ici
 admins_file = "admins.txt"
 
 # Lire les administrateurs depuis un fichier
@@ -899,13 +1077,9 @@ def lister_admins(sender, channel):
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.connect((server, port))
 
-# Création d'un contexte SSL
-context = ssl.create_default_context()
-
 # Envelopper la socket dans une couche SSL/TLS
-irc = context.wrap_socket(sock, server_hostname=server)
+irc = ssl.wrap_socket(sock)
 
-# Envoyer les commandes IRC
 irc.send(f"USER {bot_name} 0 * :{bot_name}\n".encode())
 irc.send(f"NICK {bot_name}\n".encode())
 
@@ -953,9 +1127,39 @@ announcement_thread = threading.Thread(target=send_casino_announcement)
 announcement_thread.daemon = True  # Le thread se ferme lorsque le programme principal se ferme
 announcement_thread.start()
 
+
+
+# Fonction pour vérifier si un compte existe
+def compte_existe(nom_utilisateur):
+    try:
+        # Connexion à la base de données
+        conn = mysql.connector.connect(
+            host=db_host,
+            user=db_user,
+            password=db_password,
+            database=db_name
+        )
+        cursor = conn.cursor()
+
+        # Requête pour vérifier si l'utilisateur existe
+        cursor.execute(f"SELECT COUNT(*) FROM comptes WHERE nom_utilisateur='{nom_utilisateur}'")
+        result = cursor.fetchone()
+        
+        return result[0] > 0  # Retourne True si l'utilisateur existe, sinon False
+    except mysql.connector.Error as err:
+        print(f"Erreur de connexion à la base de données: {err}")
+        return False
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# Boucle principale pour traiter les messages
+# Ajout à la section où les messages sont traités dans la boucle principale
+
 # Boucle principale pour traiter les messages
 while True:
-    message = irc.recv(2048).decode("UTF-8")
+    message = irc.recv(2048).decode("utf-8", errors="replace")
     print(message)  # Afficher le message pour le débogage
 
     # Répondre aux PINGs du serveur pour garder la connexion active
@@ -976,12 +1180,24 @@ while True:
     if "JOIN" in message:
         join_match = re.match(r"^:(.*?)!.*JOIN\s+:(#\S+)", message)
         if join_match:
-            user = join_match.group(1)
+            utilisateur = join_match.group(1)
             channel = join_match.group(2)
-            log_message = f"[info]==>{user} a rejoint le salon {channel}"
-            print(log_message)  # Afficher pour le débogage
-            irc.send(f"PRIVMSG {logs_channel} :{log_message}\n".encode())
-            log_commande(log_message)
+
+            # Si l'utilisateur rejoint le salon #casino
+            if channel == "#casino":
+                if not compte_existe(utilisateur):
+                    # Récupérer le nombre de joueurs inscrits et de parties jouées
+                    nombre_joueurs = nombre_joueurs_inscrits()
+                    nombre_parties = nombre_parties_jouees()
+
+                    # Envoi d'une notice si l'utilisateur n'a pas de compte
+                    message_notice = (
+                        f"\x0304Salut \x02{utilisateur}\x02\x03 ! Aucun compte Maxino n'a été trouvé sous ton pseudo. "
+                        f"\x0302\x02Si c'est la première fois que tu viens, tape !register pour créer ton compte\x02\x03 et commencer à jouer. "
+                        f"\x0310Actuellement, il y a \x02{nombre_joueurs}\x02 personnes inscrites et \x02{nombre_parties}\x02 parties jouées. "
+                        f"\x0310\x02Bonne chance ^^\x02"
+                    )
+                    envoyer_notice(irc, utilisateur, message_notice)
 
     # Détection des messages de type PART
     if "PART" in message:
@@ -989,10 +1205,11 @@ while True:
         if part_match:
             user = part_match.group(1)
             channel = part_match.group(2)
-            log_message = f"[info]==>{user} a quitté le salon {channel}"
+            log_message = f"[info]==> {user} a quitté le salon {channel}"
             print(log_message)  # Afficher pour le débogage
             irc.send(f"PRIVMSG {logs_channel} :{log_message}\n".encode())
             log_commande(log_message)
+
 
     elif "PRIVMSG" in message:
         sender_match = re.match(r"^:(.*?)!", message)
@@ -1027,14 +1244,13 @@ while True:
                 log_commande(f"[info]==> Version du bot demandée par {sender}: {version_bot}")
 
             # Gestion de la commande !restart
-            elif msg.startswith("!restart") and sender in administrateurs:  # Vérification des privilèges
+            elif msg.startswith("!recas") and sender in administrateurs:  # Vérification des privilèges
                 irc.send(f"PRIVMSG {channel} :Le bot va redémarrer...\n".encode())
                 log_commande(f"[info]==> Commande de redémarrage reçue de {sender}")
                 restart_bot()
-            elif msg.startswith("!restart"):
+            elif msg.startswith("!recas"):
                 irc.send(f"PRIVMSG {channel} :Désolé {sender}, vous n'avez pas les droits pour redémarrer le bot.\n".encode())
                 log_commande(f"[ERREUR]==>Commande de redémarrage refusée pour {sender}")
-
 
             # Gestion de la commande !addadmin
             elif msg.startswith("!addadmin") and sender in administrateurs:  # Vérification des privilèges
@@ -1048,7 +1264,6 @@ while True:
             elif msg.startswith("!addadmin"):
                 irc.send(f"PRIVMSG {channel} :Désolé {sender}, vous n'avez pas les droits pour ajouter un administrateur.\n".encode())
                 log_commande(f"Commande !addadmin refusée pour {sender}")
-
 
             # Détection de la commande !deladmin
             elif msg.startswith("!deladmin"):
@@ -1065,8 +1280,15 @@ while True:
 
             if msg.startswith("!register"):
                 mots = msg.split()
+
+                # Si un nom d'utilisateur est fourni, l'utiliser, sinon utiliser le pseudo de l'expéditeur
                 if len(mots) >= 2:
-                    nom_utilisateur = mots[1]
+                    nom_utilisateur = mots[1]  # Si un pseudo est fourni
+                else:
+                    nom_utilisateur = sender  # Utiliser le pseudo de l'expéditeur par défaut
+
+                # Vérifier si le compte existe déjà (fonction à implémenter selon ta logique)
+                if not compte_existe(nom_utilisateur):
                     if creer_compte(nom_utilisateur):
                         irc.send(f"PRIVMSG {channel} :Compte {nom_utilisateur} créé avec succès.\n".encode())
                         log_commande(f"[info]==> Compte {nom_utilisateur} créé avec succès par {sender}")
@@ -1074,24 +1296,27 @@ while True:
                         irc.send(f"PRIVMSG {channel} :Erreur lors de la création du compte.\n".encode())
                         log_commande(f"[ERREUR]==> Erreur lors de la création du compte pour {nom_utilisateur} par {sender}")
                 else:
-                    irc.send(f"PRIVMSG {channel} :Commande invalide. Utilisation : !register [nom_utilisateur]\n".encode())
-                    log_commande(f"[ERREUR]==> Tentative de création de compte avec commande invalide par {sender}")
+                    irc.send(f"PRIVMSG {channel} :Le compte {nom_utilisateur} existe déjà.\n".encode())
+                    log_commande(f"[ERREUR]==> Tentative de création de compte déjà existant par {sender}")
 
             elif msg.startswith("!solde"):
                 mots = msg.split()
+
+                # Si un nom d'utilisateur est fourni, l'utiliser, sinon utiliser le pseudo de l'expéditeur (sender)
                 if len(mots) >= 2:
-                    nom_utilisateur = mots[1]
-                    solde = get_solde(nom_utilisateur)
-                    if solde:
-                        solde_banque, solde_jeux = solde
-                        irc.send(f"PRIVMSG {channel} :Solde en banque : {solde_banque}, Solde en jeux : {solde_jeux}\n".encode())
-                        log_commande(f"[info]==> Solde vérifié pour {nom_utilisateur} par {sender}")
-                    else:
-                        irc.send(f"PRIVMSG {channel} :Utilisateur non trouvé veuiller d'abord vous enregistrer avec la commande !register.\n".encode())
-                        log_commande(f"[ERREUR]==> Utilisateur non trouvé pour vérification de solde par {sender}")
+                    nom_utilisateur = mots[1]  # Si l'utilisateur fournit un pseudo
                 else:
-                    irc.send(f"PRIVMSG {channel} :Commande invalide. Utilisation : !solde [nom_utilisateur]\n".encode())
-                    log_commande(f"[ERREUR]==> Commande invalide pour solde effectuée par {sender}")
+                    nom_utilisateur = sender  # Sinon, utiliser le pseudo de l'expéditeur
+
+                solde = get_solde(nom_utilisateur)
+
+                if solde:
+                    solde_banque, solde_jeux = solde
+                    irc.send(f"PRIVMSG {channel} :Solde en banque : {solde_banque}, Solde en jeux : {solde_jeux}\n".encode())
+                    log_commande(f"[info]==> Solde vérifié pour {nom_utilisateur} par {sender}")
+                else:
+                    irc.send(f"PRIVMSG {channel} :Utilisateur non trouvé, veuillez d'abord vous enregistrer avec la commande !register.\n".encode())
+                    log_commande(f"[ERREUR]==> Utilisateur non trouvé pour vérification de solde par {sender}")
 
             elif msg.startswith("!casino"):
                 mots = msg.split()
@@ -1102,6 +1327,7 @@ while True:
                     irc.send(f"PRIVMSG {channel} :{response}\n".encode())
                 else:
                     irc.send(f"PRIVMSG {channel} :Commande invalide. Utilisation : !casino [montant]\n".encode())
+
             elif msg.startswith("!roulette"):
                 mots = msg.split()
                 if len(mots) >= 2:
@@ -1171,7 +1397,6 @@ while True:
                 response = ajouter_argent(sender, msg)
                 irc.send(f"PRIVMSG {channel} :{response}\n".encode())
 
-
             elif msg.startswith("!acheter"):
                 mots = msg.split()
                 if len(mots) == 2:
@@ -1194,7 +1419,6 @@ while True:
                     irc.send(f"PRIVMSG {channel} :{response}\n".encode())
                 else:
                     irc.send(f"PRIVMSG {channel} :Commande invalide. Utilisation : !des [montant_mise]\n".encode())
-
 
             elif msg.startswith("!join"):
                 if sender in administrateurs:
@@ -1235,6 +1459,96 @@ while True:
                 else:
                     irc.send(f"PRIVMSG {sender} :Vous n'êtes pas autorisé à utiliser cette commande.\n".encode())
                     log_commande(f"[ERREUR]==> Tentative d'accès non autorisée à la commande !quit par {sender}")
+
+# Commande !bank pour déposer des extrazinos dans le compte épargne
+def bank_extrazinos(pseudo, montant):
+    if montant <= 0:
+        return f"{pseudo}, le montant à épargner doit être supérieur à zéro !"
+
+    try:
+        # Vérifier si l'utilisateur a un compte
+        cursor.execute("SELECT solde_banque, solde_jeux FROM comptes WHERE nom_utilisateur = ?", (pseudo,))
+        result = cursor.fetchone()
+
+        if result:
+            solde_banque, solde_jeux = result
+
+            if montant > solde_jeux:
+                # Si le montant est supérieur au solde disponible dans le jeu
+                return f"{pseudo}, vous n'avez pas assez d'extrazinos pour épargner {montant} ! Vous avez {solde_jeux} extrazinos disponibles."
+
+            # Mettre à jour les soldes
+            nouveau_solde_banque = solde_banque + montant
+            nouveau_solde_jeux = solde_jeux - montant
+
+            # Mettre à jour les informations dans la base de données
+            cursor.execute("UPDATE comptes SET solde_banque = ?, solde_jeux = ? WHERE nom_utilisateur = ?",
+                           (nouveau_solde_banque, nouveau_solde_jeux, pseudo))
+            conn.commit()
+
+            # Message de confirmation
+            return (f"[Crédité] {pseudo}, tu épargnes {montant} extrazinos ! "
+                    f"Ton compte épargne atteint {nouveau_solde_banque} extrazinos et "
+                    f"tu as actuellement {nouveau_solde_jeux} extrazinos sur le solde jeux.")
+        else:
+            return f"{pseudo}, vous n'avez pas encore de compte dans le casino."
+
+    except mariadb.Error as e:
+        return f"Erreur lors du dépôt d'extrazinos : {e}"
+
+def traiter_commande(message, pseudo):
+    if message.startswith("!bank"):
+        # Extraire le montant de la commande
+        try:
+            montant = float(message.split()[1])  # Récupérer le montant après !bank
+        except (IndexError, ValueError):
+            return f"{pseudo}, veuillez entrer un montant valide après la commande !bank."
+
+        # Appeler la fonction pour banquer le montant
+        reponse = bank_extrazinos(pseudo, montant)
+        return reponse
+
+    # Autres commandes possibles...
+    # elif message.startswith("!balance"):
+    #     etc.
+
+# Exécution de l'exemple
+message = "!bank 500"
+pseudo = "Elias"
+reponse = traiter_commande(message, pseudo)
+print(reponse)
+
+
+# Exécution quand un utilisateur entre la commande !ticket
+def traiter_commande_ticket(utilisateur, commande):
+    if commande.startswith('!ticket'):
+        try:
+            # Extraction du montant
+            _, montant_str = commande.split()
+            montant = int(montant_str)
+            
+            # Validation du montant : Doit être 100 extrazinos pour un ticket
+            if montant != 100:
+                print(f"Le montant doit être exactement 100 extrazinos pour acheter un ticket.")
+                return
+            
+            # Appeler la fonction pour acheter un ticket
+            acheter_ticket(utilisateur, montant)
+            
+        except ValueError:
+            print(f"Commande invalide. Usage: !ticket <montant>")
+        except Exception as e:
+            print(f"Erreur lors du traitement de la commande !ticket : {str(e)}")
+
+
+# Function to check if a user has an account
+def compte_existe(nom_utilisateur):
+    try:
+        cursor.execute("SELECT COUNT(*) FROM comptes WHERE nom_utilisateur = ?", (nom_utilisateur,))
+        return cursor.fetchone()[0] > 0
+    except mariadb.Error as e:
+        print(f"Error checking account: {e}")
+        return False
 
 # Fermeture de la connexion
 irc.close()
