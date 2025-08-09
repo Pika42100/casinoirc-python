@@ -1,6 +1,6 @@
 ############################################################################################
 #     casino BOT- PAR Maxime                                                               #
-#      Version 1.1                                                                        #
+#      Version 1.1                                                                         #
 #                                                                                          #                                                                                    #
 #    modification 31/05/2024:                                                              #
 #                                                                                          #
@@ -31,7 +31,7 @@
 #    ajout d'une anonce sur un salon pour inviter les users a jouer sur #casino            #
 #                                                                                          #
 #                                                                                          #
-#    version 1.3                                                                           #
+#    version 1.4                                                                           #
 #                                                                                          #
 #    modification 03/04/2025:                                                              #
 #                                                                                          #
@@ -39,9 +39,18 @@
 #   correction de bug                                                                      #                                                       
 #                                                                                          #
 #                                                                                          #
+#    Version 1.5                                                                           #
+#                                                                                          #
+#    modification 09/08/2025:                                                              #
+#                                                                                          #
+#                                                                                          #
+#    refonte de la page stats des joueurs avec clasement                                   #
+#                                                                                          #
+#                                                                                          #
 #    casino bot en python  by Maxime   irc.extra-cool.fr https://extra-cool.fr/            #
 ############################################################################################
 
+#!/usr/bin/env python3
 import sys
 import os
 import ssl
@@ -62,7 +71,7 @@ import schedule
 import pytz
 
 # Définir la version du bot
-version_bot = "casino BOT- PAR Maxime Version 1.2"  # pour le respect de mon travail merci de ne pas modifier cette ligne 
+version_bot = "casino BOT- PAR Maxime Version 1.5 refonte de la page stats des joueur avec clasement "  # pour le respect de mon travail merci de ne pas modifier cette ligne 
 
 class Color:
     PURPLE = '\033[95m'
@@ -80,11 +89,11 @@ class Color:
 with open('bot.pid', 'w', encoding='utf-8') as f:
     f.write(str(os.getpid()))
 
-# Configuration de la base de données
+# Configuration de la base de données a modifier
 db_host = "localhost"
-db_user = "utilisateur" #a changer
-db_password = "mot-de_pass" #a changer
-db_name = "nom-database" #a changer
+db_user = "user de la bbd"
+db_password = "mot-de-pass"
+db_name = "nom database"
 
 # Connexion à la base de données
 try:
@@ -159,34 +168,86 @@ def gestion_commande(nom_utilisateur, commande):
     return "Commande invalide ou non reconnue."
 
 # Automated announcements every hour and half-hour with a fun phrase
-def annoncer_heure():
+def annoncer_heure_irc():
+    deja_envoye = None  # pour éviter les doublons dans la même minute
+
     while True:
         now = datetime.now(pytz.timezone('Europe/Paris'))
         minute = now.minute
-        second = now.second
-        
-        if minute in [0, 30] and second == 0:
-            phrases_sympas = [
-                "C'est l'heure de se dégourdir les jambes !",
-                "Une autre demi-heure vient de passer, continuez votre bon travail !",
-                "Il est temps de prendre une petite pause, non ?",
-                "Le temps file, profitez de chaque instant !",
-                "C'est l'heure de sourire, même sans raison !"
-            ]
-            phrase = random.choice(phrases_sympas)
-            heure_message = obtenir_heure()
-            full_message = f"{heure_message} - {phrase}"
-            print(full_message)  # Ici on affiche, mais vous pourriez utiliser un envoi de message spécifique au bot
+        seconde = now.second
 
-        # Sleep for 1 second before checking again
+        if minute in (0, 30) and seconde == 0:
+            timestamp = now.strftime("%Y-%m-%d %H:%M")
+
+            if timestamp != deja_envoye:
+                phrases = [
+                    "Une nouvelle heure commence, profitez-en 🎉",
+                    "N'oubliez pas de respirer profondément… il est pile poil l'heure 🕒",
+                    "L’horloge tourne… tic-tac, il est maintenant pile !",
+                    "Chaque moment est une chance de recommencer ✨",
+                    "Une minute de plus pour s'amuser sur #casino 🍀",
+                    "Une nouvelle période démarre ! Que la chance soit avec vous 🎰",
+                    "Et bim ! Encore du fun dans le casino 💥",
+                    "C’est l’heure, le moment parfait pour tenter sa chance ! 🍀",
+                    "Nouvelle heure, nouvelle vibe 🔥",
+                    "Pile à l'heure ! Le destin vous attend au tournant 🎲",
+                    "Top chrono ⏱️… et si c’était maintenant votre moment de gloire ?",
+                    "Encore une heure pour rêver grand et jouer plus 🎰",
+                    "Chaque heure cache un jackpot potentiel 💎",
+                    "Il est l'heure de faire tourner la roue du destin 🌀",
+                    "Les gagnants n’attendent pas… ils jouent maintenant 🏆",
+                    "Le casino n’attend que vous, il est pile l’heure de briller ✨",
+                    "Et si cette heure vous portait chance ? 🤞",
+                    "L’univers vous donne un signal… et il est pile à l’heure 💫",
+                    "Nouveau round, nouvelle chance, nouveau frisson 🎯",
+                    "Boom ! Il est l’heure, et peut-être celle du jackpot 💥",
+    
+                    # Ton humoristique
+                    "Il est pile ! Même l'horloge veut que tu gagnes 😏",
+                    "Si tu entends une cloche, c’est pas une pause… c’est le jackpot qui t’appelle 🔔",
+                    "Pile à l’heure ! Et non, c’est pas une coïncidence… c’est un complot du destin 😜",
+                    "L’heure de jouer ? Oui. L’heure de gagner ? Encore plus 🐣",
+                    "C’est l’heure officielle de faire chauffer la chance 🔥 (et peut-être ta CB 😅)",
+
+                    # Ton mystique
+                    "Les astres sont alignés… il est l’heure de provoquer le destin ✨",
+                    "Un frisson traverse l’air… la chance est proche 🌌",
+                    "Il est exactement le moment que vous attendiez… 🕯️",
+                    "Le sablier est retourné… à vous d’écrire l’histoire ⏳",
+                    "Un murmure du destin vous souffle : c’est maintenant ou jamais 🔮",
+
+                    # Ton motivation
+                    "Chaque heure est une opportunité déguisée ⏰",
+                    "Le moment parfait n’existe pas… sauf maintenant 💡",
+                    "Pile à l’heure pour croire en vous 💪",
+                    "Une nouvelle heure, une nouvelle énergie 💥",
+                    "Soyez audacieux, c’est l’heure du changement 🔁",
+
+                    # Ton casino pur
+                    "Faites vos jeux ! Il est pile… et la chance rôde 🎲",
+                    "Les dés sont jetés… et vous ? Vous misez quand ? 🎯",
+                    "Le tapis est prêt, les machines vous attendent 🎰",
+                    "Cling ! Une heure de plus pour tout rafler 💰",
+                    "C’est peut-être cette minute qui change tout 🤑"
+                ]
+                phrase = random.choice(phrases)
+                heure = now.strftime("%Hh%M")
+                message = f"\x02Il est {heure} en France !\x02 {phrase}"
+                print(f"[Annonce automatique] {message}")
+
+                try:
+                    irc.send(f"PRIVMSG {casino_channel} :{message}\n".encode())
+                    irc.send(f"PRIVMSG #extra-cool :{message}\n".encode())
+                except Exception as e:
+                    print(f"Erreur lors de l'envoi de l'heure : {e}")
+
+                deja_envoye = timestamp  # mise à jour du marqueur
+
         time.sleep(1)
 
-# Start a separate thread for hourly announcements
-annonce_thread = threading.Thread(target=annoncer_heure, daemon=True)
-annonce_thread.start()
+thread_heure = threading.Thread(target=annoncer_heure_irc, daemon=True)
+thread_heure.start()
 
-
-    
 
 # Fonction pour vérifier si un utilisateur a un compte
 def compte_existe(nom_utilisateur):
@@ -254,159 +315,248 @@ def creer_compte(nom_utilisateur):
 
 def generer_page_stats_joueurs():
     try:
-        # Récupérer tous les comptes
-        cursor.execute("SELECT nom_utilisateur, solde_banque, solde_jeux FROM comptes")
-        joueurs = cursor.fetchall()
+        # 1) Récupérer tous les comptes triés par total (banque + jeux) décroissant
+        cursor.execute("""
+            SELECT nom_utilisateur,
+                   solde_banque,
+                   solde_jeux,
+                   (solde_banque + solde_jeux) AS total
+            FROM comptes
+            ORDER BY total DESC, nom_utilisateur ASC
+        """)
+        joueurs = cursor.fetchall()  # [(nom, banque, jeux, total), ...]
 
-        # Commencer la construction de la page HTML avec styles CSS
-        html_content = """
-        <!DOCTYPE html>
-        <html lang="fr">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <link rel="stylesheet" href="css/styles.css?v=1.0">
-            <title>Statistiques des Joueurs</title>
-            <style>
-                body {
-                    font-family: Arial, sans-serif;
-                    background-color: #f4f4f9;
-                    color: #333;
-                    margin: 0;
-                    display: flex;
-                    flex-direction: column;
-                    min-height: 100vh;
-                }
-                h1 {
-                    text-align: center;
-                    background-color: #4CAF50;
-                    color: white;
-                    padding: 20px 0;
-                    margin-bottom: 20px;
-                }
-                table {
-                    width: 70%;
-                    margin: 0 auto;
-                    border-collapse: collapse;
-                    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-                    background-color: #fff;
-                }
-                th, td {
-                    padding: 12px;
-                    text-align: center;
-                    border-bottom: 1px solid #ddd;
-                }
-                th {
-                    background-color: #4CAF50;
-                    color: white;
-                }
-                tr:hover {
-                    background-color: #f1f1f1;
-                }
-                td {
-                    color: #555;
-                }
-                .footer {
-                    text-align: center;
-                    padding: 20px;
-                    background-color: #4CAF50;
-                    color: white;
-                    margin-top: auto;
-                }
-                .commands {
-                    margin: 20px auto;
-                    width: 70%;
-                    background-color: #e7f3fe;
-                    padding: 15px;
-                    border-radius: 5px;
-                    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-                }
-                nav {
-                    background-color: #333;
-                    overflow: hidden;
-                }
-                nav a {
-                    float: left;
-                    display: block;
-                    color: #f2f2f2;
-                    text-align: center;
-                    padding: 14px 16px;
-                    text-decoration: none;
-                }
-                nav a:hover {
-                    background-color: #ddd;
-                    color: black;
-                }
-            </style>
-        </head>
-        <body>
-            <header>
-                <img src="images/logo.png" alt="Logo IRC" style="width: 150px;"> <!-- Ajustez le chemin et la taille -->
-                <h1>Statistiques des Joueurs</h1>
-            </header>
-            <nav>
-                <a href="index.php">Accueil</a>
-                <a href="staff.html">Équipe</a>
-                <a href="status.php">Statut</a>
-                <a href="chat.html">Chat</a>
-                <a href="download.html">Téléchargements</a>
-                <a href="channels.php">Salons</a>
-                <a href="github.html">GitHub</a>
-                <a href="irc_stats.html">Statistiques salon</a>
-                <a href="stats_joueurs.html">Statistiques Casino</a>
-            </nav>
-            <table>
-                <tr>
-                    <th>Nom d'utilisateur</th>
-                    <th>Solde Banque</th>
-                    <th>Solde Jeux</th>
-                </tr>
-        """
+        def fmt(n):
+            try:
+                return f"{int(n):,}".replace(",", " ")
+            except:
+                return str(n)
 
-        # Ajouter chaque joueur dans le tableau HTML
-        for joueur in joueurs:
-            nom_utilisateur, solde_banque, solde_jeux = joueur
-            html_content += f"""
-                <tr>
-                    <td>{nom_utilisateur}</td>
-                    <td>{solde_banque} Extrazino</td>
-                    <td>{solde_jeux} Extrazino</td>
-                </tr>
-            """
+        # Top 10
+        top_items = []
+        for i, (nom, banque, jeux, total) in enumerate(joueurs[:10], start=1):
+            medal = "🥇" if i == 1 else ("🥈" if i == 2 else ("🥉" if i == 3 else f"#{i}"))
+            top_items.append(
+                f'<li class="list-group-item d-flex justify-content-between align-items-center">'
+                f'<span class="fw-bold">{medal} {nom}</span>'
+                f'<span class="badge bg-primary rounded-pill">{fmt(total)} Extrazino</span>'
+                f'</li>'
+            )
+        top10_html = "\n".join(top_items) if top_items else "<li class='list-group-item'>Aucun joueur</li>"
 
-        # Section des commandes
-        html_content += """
-            </table>
-            <div class="commands">
-                <h2>Commandes disponibles</h2>
-                <p><strong>!register [nom_utilisateur]</strong> : Créer un compte.</p>
-                <p><strong>!solde [nom_utilisateur]</strong> : Voir le solde du compte.</p>
-                <p><strong>!convertir [montant]</strong> : Convertir vos Extrazino de jeux en banque.</p>
-                <p><strong>!casino [montant]</strong> : Jouer au jeu du casino (ex: !casino 50).</p>
-                <p><strong>!roulette [nombre]</strong> : Jouer au jeu de la roulette.</p>
-                <p><strong>!slots [montant]</strong> : Jouer aux machines à sous.</p>
-                <p><strong>!des [montant]</strong> : Jouer au jeu de dés.</p>
-                <p><strong>!transfert [montant]</strong> : Transfert des Extrazino de votre compte en banque vers votre compte de jeux.</p>
-                <p>Rejoignez le salon <strong>#casino</strong> pour jouer !</p>
-            </div>
-            <div class="footer">
-                <p>&copy; 2024 Casino IRC Python By Maxime - Tous droits réservés.</p>
-            </div>
-        </body>
-        </html>
-        """
+        # Tableau complet (toutes les lignes)
+        rows_all = []
+        for i, (nom, banque, jeux, total) in enumerate(joueurs, start=1):
+            icon = "🥇" if i == 1 else ("🥈" if i == 2 else ("🥉" if i == 3 else f"#{i}"))
+            rows_all.append(f"""
+              <tr data-name="{nom.lower()}">
+                <td class="text-start"><span class="me-2">{icon}</span>{nom}</td>
+                <td>{fmt(banque)} Extrazino</td>
+                <td>{fmt(jeux)} Extrazino</td>
+                <td class="fw-bold">{fmt(total)} Extrazino</td>
+              </tr>
+            """)
+        table_all_html = "\n".join(rows_all) if rows_all else "<tr><td colspan='4'>Aucun joueur</td></tr>"
 
-        # Chemin de la page HTML à générer
+        # Top 100 (pour affichage initial)
+        table_top100_html = "\n".join(rows_all[:100]) if rows_all else "<tr><td colspan='4'>Aucun joueur</td></tr>"
+
+        # 3) Page HTML
+        html_content = f"""<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Classement des Joueurs</title>
+
+  <!-- Anti-flash sombre -->
+  <script>
+    (function () {{
+      try {{
+        if (localStorage.getItem('theme') === 'dark') {{
+          document.documentElement.classList.add('dark-theme');
+        }}
+      }} catch(e){{}}
+    }})();
+  </script>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="css/theme-extra-cool.css" />
+  <style>
+    .ranking-card {{ background: var(--card-bg); color: var(--card-text); border: 1px solid rgba(0,0,0,.08);
+                     border-radius: var(--radius); box-shadow: 0 6px 24px rgba(0,0,0,.08); }}
+    .stats-table thead th {{ background: var(--bg2); color: var(--ink); }}
+    .list-group-item {{ background: var(--card-bg); color: var(--card-text); border-color: rgba(0,0,0,.08); }}
+    .badge.bg-primary {{ background: linear-gradient(90deg, var(--primary), var(--primary-2)); }}
+    main {{ margin-bottom:0 !important; padding-bottom:0 !important; }}
+    .tools .form-control {{ background: var(--bg2); color: var(--ink); border: 1px solid rgba(0,0,0,.12); }}
+  </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg fixed-top">
+  <div class="container">
+    <a class="navbar-brand" href="index.php">Extra-Cool</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navContent">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse justify-content-center" id="navContent">
+      <ul class="navbar-nav">
+        <li class="nav-item"><a class="nav-link" href="index.php">Retour A l'Accueil Du Site</a></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<section class="hero text-center">
+  <img src="images/logo.png" alt="Logo IRC" class="hero-logo">
+  <h1 class="mt-3">Classement des Joueurs</h1>
+  <p class="lead">Trié par total d'Extrazino (banque + jeux). Recherche et affichage complet disponibles.</p>
+</section>
+
+<main class="container pb-5">
+  <div class="row g-4">
+
+    <!-- Top 10 -->
+    <div class="col-12">
+      <div class="ranking-card p-4">
+        <h2 class="h4 mb-3">Top 10 Meilleurs Joueurs</h2>
+        <ul class="list-group list-group-flush">
+{top10_html}
+        </ul>
+      </div>
+    </div>
+
+    <!-- Outils : recherche + bascule top100/tout -->
+    <div class="col-12">
+      <div class="d-flex flex-wrap align-items-center gap-2 tools">
+        <input id="searchInput" type="text" class="form-control" style="max-width:320px" placeholder="Rechercher un joueur..." />
+        <button id="toggleBtn" class="btn-small">Afficher tout</button>
+      </div>
+    </div>
+
+    <!-- Tableau -->
+    <div class="col-12">
+      <div class="card p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle text-center mb-0 stats-table">
+            <thead>
+              <tr>
+                <th class="text-start">Joueur</th>
+                <th>Solde Banque</th>
+                <th>Solde Jeux</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyTop100">
+{table_top100_html}
+            </tbody>
+            <tbody id="tbodyAll" style="display:none">
+{table_all_html}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Commandes -->
+    <div class="col-12">
+      <div class="card p-4">
+        <h2 class="h5">Commandes disponibles</h2>
+        <ul class="mb-0">
+          <li><strong>!register [nom_utilisateur]</strong> — Créer un compte</li>
+          <li><strong>!solde [nom_utilisateur]</strong> — Voir le solde</li>
+          <li><strong>!convertir [montant]</strong> — Jeux → Banque</li>
+          <li><strong>!casino [montant]</strong> — Lancer le casino</li>
+          <li><strong>!roulette [nombre]</strong> — Jouer à la roulette</li>
+          <li><strong>!slots [montant]</strong> — Machines à sous</li>
+          <li><strong>!des [montant]</strong> — Jeu de dés</li>
+          <li><strong>!transfert [montant]</strong> — Banque → Jeux</li>
+          <li>Rejoignez le salon <strong>#casino</strong> pour jouer !</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<footer class="text-center">
+  <p class="mb-0">© 2024 Casino IRC Python By Maxime — Tous droits réservés.</p>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- Switch thème + Recherche + Bascule top100/tout -->
+<script>
+document.addEventListener("DOMContentLoaded", function() {{
+  // bouton thème
+  const body = document.body;
+  const themeBtn = document.createElement("button");
+  themeBtn.className = "btn-small ms-2";
+  themeBtn.textContent = "🌙 Mode sombre";
+  const nav = document.querySelector(".navbar .container");
+  if (nav) nav.appendChild(themeBtn);
+  if (localStorage.getItem("theme") === "dark") {{
+    body.classList.add("dark-theme");
+    themeBtn.textContent = "☀️ Mode clair";
+  }}
+  themeBtn.addEventListener("click", () => {{
+    body.classList.toggle("dark-theme");
+    if (body.classList.contains("dark-theme")) {{
+      localStorage.setItem("theme", "dark");
+      themeBtn.textContent = "☀️ Mode clair";
+    }} else {{
+      localStorage.setItem("theme", "light");
+      themeBtn.textContent = "🌙 Mode sombre";
+    }}
+  }});
+
+  // bascule Top100 / Tout
+  const toggleBtn = document.getElementById("toggleBtn");
+  const tbodyTop100 = document.getElementById("tbodyTop100");
+  const tbodyAll = document.getElementById("tbodyAll");
+  let showingAll = false;
+
+  toggleBtn.addEventListener("click", () => {{
+    showingAll = !showingAll;
+    tbodyAll.style.display = showingAll ? "" : "none";
+    tbodyTop100.style.display = showingAll ? "none" : "";
+    toggleBtn.textContent = showingAll ? "Afficher Top 100" : "Afficher tout";
+    // reset recherche
+    const q = document.getElementById("searchInput");
+    if (q) q.value = "";
+    filterRows(""); // tout réafficher
+  }});
+
+  // recherche par pseudo (filtre sur tbody visible)
+  function filterRows(query) {{
+    const activeTbody = showingAll ? tbodyAll : tbodyTop100;
+    const q = query.trim().toLowerCase();
+    const rows = activeTbody.querySelectorAll("tr[data-name]");
+    rows.forEach(tr => {{
+      const name = tr.getAttribute("data-name") || "";
+      tr.style.display = name.includes(q) ? "" : "none";
+    }});
+  }}
+
+  const searchInput = document.getElementById("searchInput");
+  searchInput.addEventListener("input", (e) => filterRows(e.target.value));
+}});
+</script>
+
+</body>
+</html>"""
+
+        # 4) Écrire le fichier
         chemin_html = "/var/www/html/stats_joueurs.html"
-
-        # Écrire le contenu HTML dans un fichier
-        with open(chemin_html, "w") as file:
-            file.write(html_content)
+        with open(chemin_html, "w", encoding="utf-8") as f:
+            f.write(html_content)
 
         print(f"Page HTML générée avec succès à l'emplacement: {chemin_html}")
 
-    except mariadb.Error as e:
+    except Exception as e:
         print(f"Erreur lors de la génération de la page HTML: {e}")
+
 
 # Exemple d'utilisation : Créer un compte puis générer la page HTML des stats
 if creer_compte("Elias"):
@@ -958,13 +1108,13 @@ port = 6697  # Port TLS/SSL pour IRC
 channel = "#extra-cool"
 logs_channel = "#logs"
 casino_channel = "#casino"
-bot_name = "CasinoBot"
+bot_name = "Extraino"
 bot_channels = set()
 irc_channels = ["#extra-cool", "#casino", "#casinoadmin"]
 nickname = "Extraino"
 password = "votre-mot-de-pass"
-nickserv_password = "votre-mot(de-pass"
-ircop_password = "votre-mot-pass"  # Ajoutez votre mot de passe IRCop ici
+nickserv_password = "votre-mot-de-pass"
+ircop_password = "votre-mot-de-pass"  # Ajoutez votre mot de passe IRCop ici
 admins_file = "admins.txt"
 
 # Lire les administrateurs depuis un fichier
@@ -1110,15 +1260,15 @@ for channel in irc_channels:
     irc.send(f"JOIN {channel}\n".encode())
     bot_channels.add(channel)
 
-# Fonction pour envoyer l'annonce toutes les 5 minutes
+# Fonction pour envoyer l'annonce toutes les 1h minutes
 def send_casino_announcement():
     while True:
         try:
             # Message avec couleur rouge
-            message = "\x03" + "04" + "Rejoignez-nous sur #casino pour jouer au casino!"  # Couleur 04 (rouge)
+            message = "\x03" + "04" + "Rejoignez-Nous Sur #casino Pour Jouer Et Te Fair Un Max D'extraino!"  # Couleur 04 (rouge)
             irc.send(f"PRIVMSG #extra-cool :{message}\n".encode()) # modifier votre salon 
             print("Message envoyé avec succès à #extra-cool")
-            time.sleep(300)  # Attendre 300 secondes (5 minutes) avant d'envoyer le prochain message
+            time.sleep(3600)  # Attendre 3600 secondes (1h) avant d'envoyer le prochain message
         except Exception as e:
             print(f"Erreur lors de l'envoi du message : {e}")
 
@@ -1152,6 +1302,94 @@ def compte_existe(nom_utilisateur):
     finally:
         cursor.close()
         conn.close()
+
+
+
+
+# Commande !bank pour déposer des extrazinos dans le compte épargne
+def bank_extrazinos(pseudo, montant):
+    if montant <= 0:
+        return f"{pseudo}, le montant à épargner doit être supérieur à zéro !"
+
+    try:
+        # Vérifier si l'utilisateur a un compte
+        cursor.execute("SELECT solde_banque, solde_jeux FROM comptes WHERE nom_utilisateur = ?", (pseudo,))
+        result = cursor.fetchone()
+
+        if result:
+            solde_banque, solde_jeux = result
+
+            if montant > solde_jeux:
+                # Si le montant est supérieur au solde disponible dans le jeu
+                return f"{pseudo}, vous n'avez pas assez d'extrazinos pour épargner {montant} ! Vous avez {solde_jeux} extrazinos disponibles."
+
+            # Mettre à jour les soldes
+            nouveau_solde_banque = solde_banque + montant
+            nouveau_solde_jeux = solde_jeux - montant
+
+            # Mettre à jour les informations dans la base de données
+            cursor.execute("UPDATE comptes SET solde_banque = ?, solde_jeux = ? WHERE nom_utilisateur = ?",
+                           (nouveau_solde_banque, nouveau_solde_jeux, pseudo))
+            conn.commit()
+
+            # Message de confirmation
+            return (f"[Crédité] {pseudo}, tu épargnes {montant} extrazinos ! "
+                    f"Ton compte épargne atteint {nouveau_solde_banque} extrazinos et "
+                    f"tu as actuellement {nouveau_solde_jeux} extrazinos sur le solde jeux.")
+        else:
+            return f"{pseudo}, vous n'avez pas encore de compte dans le casino."
+
+    except mariadb.Error as e:
+        return f"Erreur lors du dépôt d'extrazinos : {e}"
+
+def traiter_commande(message, pseudo):
+    if message.startswith("!bank"):
+        # Extraire le montant de la commande
+        try:
+            montant = float(message.split()[1])  # Récupérer le montant après !bank
+        except (IndexError, ValueError):
+            return f"{pseudo}, veuillez entrer un montant valide après la commande !bank."
+
+        # Appeler la fonction pour banquer le montant
+        reponse = bank_extrazinos(pseudo, montant)
+        return reponse
+
+    # Autres commandes possibles...
+    # elif message.startswith("!balance"):
+    #     etc.
+
+# Exécution de l'exemple
+message = "!bank 500"
+pseudo = "Elias"
+reponse = traiter_commande(message, pseudo)
+print(reponse)
+
+
+def acheter_ticket(utilisateur, montant):
+    if montant != 100:
+        return f"{utilisateur}, le montant doit être exactement 100 extrazinos pour acheter un ticket."
+
+    # Vérifier si le joueur a assez de solde
+    solde_jeux = get_solde_jeux(utilisateur)
+    if solde_jeux is None:
+        return f"{utilisateur}, vous devez d'abord vous enregistrer avec !register."
+
+    if solde_jeux < montant:
+        return f"{utilisateur}, solde insuffisant. Il vous faut 100 extrazinos."
+
+    nouveau_solde = solde_jeux - montant
+
+    # Mise à jour du solde
+    if mettre_a_jour_solde(utilisateur, get_solde_banque(utilisateur), nouveau_solde):
+        try:
+            # Enregistrer l'achat en base (à toi de créer cette table si tu veux un historique)
+            cursor.execute("INSERT INTO tickets (nom_utilisateur, date_achat) VALUES (?, ?)", (utilisateur, datetime.now()))
+            conn.commit()
+        except:
+            pass  # Tu peux ignorer si tu n'as pas encore de table "tickets"
+        return f"{utilisateur}, vous avez acheté un ticket pour 100 extrazinos. Bonne chance ! 🎟️"
+    else:
+        return f"{utilisateur}, une erreur est survenue lors de l’achat."
 
 
 # Boucle principale pour traiter les messages
@@ -1192,7 +1430,7 @@ while True:
 
                     # Envoi d'une notice si l'utilisateur n'a pas de compte
                     message_notice = (
-                        f"\x0304Salut \x02{utilisateur}\x02\x03 ! Aucun compte Maxino n'a été trouvé sous ton pseudo. "
+                        f"\x0304Salut \x02{utilisateur}\x02\x03 ! Aucun compte Extraino n'a été trouvé sous ton pseudo. "
                         f"\x0302\x02Si c'est la première fois que tu viens, tape !register pour créer ton compte\x02\x03 et commencer à jouer. "
                         f"\x0310Actuellement, il y a \x02{nombre_joueurs}\x02 personnes inscrites et \x02{nombre_parties}\x02 parties jouées. "
                         f"\x0310\x02Bonne chance ^^\x02"
@@ -1460,95 +1698,18 @@ while True:
                     irc.send(f"PRIVMSG {sender} :Vous n'êtes pas autorisé à utiliser cette commande.\n".encode())
                     log_commande(f"[ERREUR]==> Tentative d'accès non autorisée à la commande !quit par {sender}")
 
-# Commande !bank pour déposer des extrazinos dans le compte épargne
-def bank_extrazinos(pseudo, montant):
-    if montant <= 0:
-        return f"{pseudo}, le montant à épargner doit être supérieur à zéro !"
-
-    try:
-        # Vérifier si l'utilisateur a un compte
-        cursor.execute("SELECT solde_banque, solde_jeux FROM comptes WHERE nom_utilisateur = ?", (pseudo,))
-        result = cursor.fetchone()
-
-        if result:
-            solde_banque, solde_jeux = result
-
-            if montant > solde_jeux:
-                # Si le montant est supérieur au solde disponible dans le jeu
-                return f"{pseudo}, vous n'avez pas assez d'extrazinos pour épargner {montant} ! Vous avez {solde_jeux} extrazinos disponibles."
-
-            # Mettre à jour les soldes
-            nouveau_solde_banque = solde_banque + montant
-            nouveau_solde_jeux = solde_jeux - montant
-
-            # Mettre à jour les informations dans la base de données
-            cursor.execute("UPDATE comptes SET solde_banque = ?, solde_jeux = ? WHERE nom_utilisateur = ?",
-                           (nouveau_solde_banque, nouveau_solde_jeux, pseudo))
-            conn.commit()
-
-            # Message de confirmation
-            return (f"[Crédité] {pseudo}, tu épargnes {montant} extrazinos ! "
-                    f"Ton compte épargne atteint {nouveau_solde_banque} extrazinos et "
-                    f"tu as actuellement {nouveau_solde_jeux} extrazinos sur le solde jeux.")
-        else:
-            return f"{pseudo}, vous n'avez pas encore de compte dans le casino."
-
-    except mariadb.Error as e:
-        return f"Erreur lors du dépôt d'extrazinos : {e}"
-
-def traiter_commande(message, pseudo):
-    if message.startswith("!bank"):
-        # Extraire le montant de la commande
-        try:
-            montant = float(message.split()[1])  # Récupérer le montant après !bank
-        except (IndexError, ValueError):
-            return f"{pseudo}, veuillez entrer un montant valide après la commande !bank."
-
-        # Appeler la fonction pour banquer le montant
-        reponse = bank_extrazinos(pseudo, montant)
-        return reponse
-
-    # Autres commandes possibles...
-    # elif message.startswith("!balance"):
-    #     etc.
-
-# Exécution de l'exemple
-message = "!bank 500"
-pseudo = "Elias"
-reponse = traiter_commande(message, pseudo)
-print(reponse)
-
-
-# Exécution quand un utilisateur entre la commande !ticket
-def traiter_commande_ticket(utilisateur, commande):
-    if commande.startswith('!ticket'):
-        try:
-            # Extraction du montant
-            _, montant_str = commande.split()
-            montant = int(montant_str)
-            
-            # Validation du montant : Doit être 100 extrazinos pour un ticket
-            if montant != 100:
-                print(f"Le montant doit être exactement 100 extrazinos pour acheter un ticket.")
-                return
-            
-            # Appeler la fonction pour acheter un ticket
-            acheter_ticket(utilisateur, montant)
-            
-        except ValueError:
-            print(f"Commande invalide. Usage: !ticket <montant>")
-        except Exception as e:
-            print(f"Erreur lors du traitement de la commande !ticket : {str(e)}")
-
-
-# Function to check if a user has an account
-def compte_existe(nom_utilisateur):
-    try:
-        cursor.execute("SELECT COUNT(*) FROM comptes WHERE nom_utilisateur = ?", (nom_utilisateur,))
-        return cursor.fetchone()[0] > 0
-    except mariadb.Error as e:
-        print(f"Error checking account: {e}")
-        return False
+                if msg.startswith("!ticket"):
+                    mots = msg.split()
+                if len(mots) == 2:
+                    try:
+                        montant = int(mots[1])
+                        response = acheter_ticket(sender, montant)
+                        irc.send(f"PRIVMSG {channel} :{response}\n".encode())
+                    except ValueError:
+                        irc.send(f"PRIVMSG {channel} :Montant invalide. Utilisation : !ticket 100\n".encode())
+                else:
+                    irc.send(f"PRIVMSG {channel} :Commande invalide. Utilisation : !ticket 100\n".encode())
 
 # Fermeture de la connexion
 irc.close()
+
