@@ -1,4 +1,4 @@
-# casinoIRC-python beta
+# casinoIRC-python 1.5 by Maxime [Extra-cool](https://extra-cool.fr/) 
 jeux de casino en python pour irc
 
 dans cette version je suis reparti de zéro pour modifier la connexion irc du bot Le bot ce connect maintenant en socket ;)
