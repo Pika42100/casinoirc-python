@@ -84,11 +84,23 @@ ajout d'une page html des stats joueur
 ajout d'une anonce sur un salon pour inviter les users a jouer sur #casino  
 
 
-version 1.3
+version 1.4
 
 modification 03/04/2025:
+
                                                         
 correction de bug
+
+
+
+
+version 1.5
+
+modification 09/08/2025:
+
+
+refonte de la page stats des joueur avec clasement
+
 
 ## Auteurs
 * **Maxime** irc.extra-cool.fr https://extra-cool.fr/ )
